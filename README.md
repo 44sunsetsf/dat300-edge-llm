@@ -21,6 +21,10 @@ DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，
 
 ## 最快上手
 
+三种角色：**笔记本**（所有命令都在这里敲）、**主控 Pi**（只有它需要模型文件，建议用 cassian）、**worker Pi**（只需要程序，`setup_pi.sh` 会装好）。详见 [`docs/操作指南.md`](docs/操作指南.md)。
+
+以下命令都【在笔记本上】、本仓库目录下运行：
+
 ```bash
 cp scripts/hosts.env.example scripts/hosts.env   # 填写 HEAD 和 WORKERS 的 用户@IP
 scripts/add_keys.sh                              # 免密登录（每台输一次密码）
