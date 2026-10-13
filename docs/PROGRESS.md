@@ -2,7 +2,7 @@
 
 ## 当前状态（2026-10-14）
 - 仓库已整理好，可以直接用来做 4/8 台的活动，照 [`操作指南.md`](操作指南.md) 做即可。
-- 改进版 846e5d9（`LLAMA_COMMIT`）和原版 bd4eeaa（`LLAMA_STOCK_COMMIT`）都已发布到 fork 的 Releases，每个版本有两种安装包：
+- 改进版 c1212b5（`LLAMA_COMMIT`，含 N 节点 allreduce 和计时日志 GGML_RPC_TRACE）和原版 bd4eeaa（`LLAMA_STOCK_COMMIT`）都已发布到 fork 的 Releases，每个版本有两种安装包：
   - 默认版：Debian 13，gcc 14；
   - `-bookworm` 版：Debian 12 兼容版，prefill 慢约 6%，decode 一样。
 - cassian@192.168.31.30（HEAD，有模型）和 rex@192.168.31.115 已经用 `setup_pi.sh` 装好两个版本，`check_cluster.sh` 全部正常。

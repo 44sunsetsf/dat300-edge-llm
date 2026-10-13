@@ -11,6 +11,8 @@
 #   P=32 N=30      prompt 长度 / 生成 token 数
 #   TRAFFIC=0      跳过流量测量（省两次加载模型的时间）
 #   TAG=名字       加在日志文件名里；NETEM_MS=2 只是记录用（延迟要另外用 scripts/exp/netem.sh 加）
+#   TRACE=1        开启计时日志：每台 rpc-server 记录每条命令的耗时，跑完取回到 logs/trace/<本次日志名>/，
+#                  并自动运行 scripts/analyze_trace.py 拆分每个 token 的时间（会自动跳过流量测量）
 #   RPC_CACHE=0    关掉 rpc-server 的本地权重缓存（默认开，缓存在每台 Pi 的 ~/.cache/llama.cpp/rpc）
 #   TIMEOUT=900    每次 llama-bench 的超时秒数，卡住就放弃这组
 # 日志：logs/<模式>_<台数>n_<build>[_TAG]_<时间>.log，最后一行是 RESULT（scripts/summarize.py 读它）
@@ -33,12 +35,13 @@ ARGS="-m $MODEL -t 4"
 [ $MODE != single ] && ARGS+=" --rpc $RPC -dev $DEV -sm $SM"
 ARGS+=" ${EXTRA:-}"
 
-RPC_C=""; [ "${RPC_CACHE:-1}" = 1 ] && RPC_C="-c"   # -c：worker 本地缓存权重，第二次起加载快一倍（不影响速度）
+RPC_C=""; [ "${RPC_CACHE:-1}" = 1 ] && RPC_C="-c"
+TRACE_ENV=""; [ "${TRACE:-0}" = 1 ] && { TRACE_ENV="GGML_RPC_TRACE=\$HOME/exp/logs/trace.csv"; TRAFFIC=0; }   # -c：worker 本地缓存权重，第二次起加载快一倍（不影响速度）
 # 清理残留进程，重新起 rpc-server（每组都用新进程，内存干净）
 for s in $NODES; do ssh_pi "$s" 'pkill -x ggml-rpc-server; pkill -x llama-bench; pkill -x vmstat; true'; done
 for s in $SERVERS; do
   T=${RPC_T:-4}; [ "$s" = "$HEAD" ] && T=${RPC_T_HEAD:-$T}
-  ssh_pi "$s" "mkdir -p ~/exp/logs; cd $BIN; nohup ./ggml-rpc-server -H 0.0.0.0 -p $RPC_PORT -t $T $RPC_C > ~/exp/logs/rpc.log 2>&1 < /dev/null &
+  ssh_pi "$s" "mkdir -p ~/exp/logs; cd $BIN; $TRACE_ENV nohup ./ggml-rpc-server -H 0.0.0.0 -p $RPC_PORT -t $T $RPC_C > ~/exp/logs/rpc.log 2>&1 < /dev/null &
     sleep 1; pgrep -x ggml-rpc-server >/dev/null || { echo 'rpc-server 启动失败'; tail -3 ~/exp/logs/rpc.log; }"
 done
 
@@ -73,4 +76,10 @@ traffic() { local a b; a=($(net_all)); bench "$@" >/dev/null 2>&1; b=($(net_all)
   echo "RESULT mode=$MODE nn=$NN build=${BUILD:-opt} rpc_t=${RPC_T:-4} rpc_t_head=${RPC_T_HEAD:-${RPC_T:-4}} env=${ENV:+${ENV// /,}} extra=${EXTRA:+${EXTRA// /,}} netem_ms=${NETEM_MS:-0} prefill=${PPV:-失败} decode=${TGV:-失败} head_kb=$KB cpu=$CPU"
 } 2>&1 | tee "$OUT"
 for s in $SERVERS; do ssh_pi "$s" 'pkill -x ggml-rpc-server; true'; done
+if [ "${TRACE:-0}" = 1 ] && [ -n "$SERVERS" ]; then
+  TDIR="$LOG_DIR/trace/$(basename "$OUT" .log)"; mkdir -p "$TDIR"
+  for s in $SERVERS; do scp -q "$s:exp/logs/trace.csv" "$TDIR/${s%@*}_$(ip_of $s).csv"; done
+  python3 "$REPO_DIR/scripts/analyze_trace.py" "$TDIR"/*.csv | tee -a "$OUT"
+  echo "计时日志：${TDIR#$REPO_DIR/}/"
+fi
 echo "已保存 ${OUT#$REPO_DIR/}"

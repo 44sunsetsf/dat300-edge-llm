@@ -5,6 +5,7 @@ DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，
 
 - **下次活动照着做**：[`docs/操作指南.md`](docs/操作指南.md)（从接线到出结果，一步一步写好了）
 - **不用脚本、自己调参**：[`docs/手动使用改进版.md`](docs/手动使用改进版.md)（rpc-server 怎么起、主控上怎么跑、能调哪些参数）
+- **每一步的耗时日志**：[`docs/计时日志.md`](docs/计时日志.md)（每台 Pi 记录每条命令的耗时，自动拆分每个 token 的时间）
 - **研究结果**：[`docs/RESULTS.md`](docs/RESULTS.md)
 - **改进版 llama.cpp**：fork [`44sunsetsf/llama.cpp`](https://github.com/44sunsetsf/llama.cpp) 的 `dat300` 分支，
   预编译包在 [Releases](https://github.com/44sunsetsf/llama.cpp/releases)
@@ -50,6 +51,7 @@ python3 scripts/summarize.py                     # 结果表
 | `scripts/exp/netem.sh` | 给 Pi 加网络延迟（需要 sudo 密码） |
 | `scripts/exp/mac_sim.sh` | 在 Mac 上用 Docker 模拟 N 台集群 |
 | `scripts/summarize.py` | 把 `logs/` 里的结果汇总成表 |
+| `scripts/analyze_trace.py` | 分析计时日志：每个 token 的计算 / 同步 / 等待各占多少 |
 | `scripts/build_release.sh` | 改了 llama.cpp 代码后，在 Mac 上用 Docker 重新编译并发布（约 1 分钟） |
 | `docs/` | 操作指南、研究结果、进度 |
 | `logs/` | 所有原始日志 |
