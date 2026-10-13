@@ -61,6 +61,16 @@ head 那台（cassian）上同时跑着 llama-bench 和一个 rpc-server。llama
 - 看重 decode（逐字输出的速度）：用 `-t 3`；
 - 看重首 token 时间（长 prompt）：用 `-t 4`。
 
+### 补充实验（2026-10-14，cassian / rex）
+
+| 实验 | 结果 | 说明什么 |
+|---|---|---|
+| 单机 decode，`-t 3` vs `-t 4` | **1.93** vs 1.85 tok/s | 单机也是 3 线程更快：decode 完全被内存带宽卡住，第 4 个线程只会抢带宽。`-t 3` 更快不只是因为主控在忙等 |
+| 单机 prefill（pp32），`-t 3` vs `-t 4` | 3.17 vs 4.16 tok/s | prefill 是计算密集，线程越多越快 |
+| 权重重排 `--repack 0` vs `1`（`-t 3`） | pp32 3.18 vs 3.17；tg 1.91 vs 1.93 | 在 Pi 400（Cortex-A72，没有 dotprod 指令）上重排没有作用。所以 rpc-server 不做重排也不吃亏 |
+| 单机直接跑 vs 通过本机 rpc-server 跑 | tg 1.93 vs 1.89 | RPC 本身的开销很小 |
+| 2 台 TP，一次前向同时算 k 个 token（`-p 1,2,4,8,32 -n 0`） | k=1：342 ms；k=2：490 ms；k=4：820 ms；k=8：1504 ms；k=32：5.4 s | 2 台时一次多算几个 token 并不便宜（算 2 个要 1.43 倍时间），因为 Pi 的 CPU 在 batch>1 时很快变成计算瓶颈。所以投机解码（speculative decoding）在 2 台上收益有限。8 台时每台的计算只剩 1/8，同步开销不随 k 增加，预计会划算得多，待验证 |
+
 ## 推到 8 台：Mac 上用 Docker 模拟（每个 rpc-server 一个容器，所有容器出口都加 2 ms 延迟）
 
 Mac 上 8 个容器共用 10 个 CPU，所以这里的 tok/s **不能**代表 8 台 Pi 的速度。可信的是这两项"协议本身"的量：
