@@ -1,18 +1,23 @@
-# 进度（断线后先读这里）
+# 进度（断线或换人接手时先读这里）
 
 ## 当前状态（2026-10-14）
-- 集群：cassian@192.168.31.30（head，模型在 `~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf`），rex@192.168.31.115（worker）。都是 Pi 400，网线接宿舍路由器。
-- 两台 Pi 的 `~/llama.cpp/build/bin` 是原版 bd4eeaa 的预编译包（`setup_pi.sh` 装的）；改进版 846e5d9 放在 `~/llama.cpp/build-opt/bin`。
-- `LLAMA_COMMIT` 已改成 846e5d9，Release `dat300-846e5d9` 已发布。在新 Pi 上运行 `scripts/setup_pi.sh`，装的就是改进版。
-- 已完成：第 1–3 步（Mac 上 N=2/4/8 模拟、2 台 Pi 的基线 / netem / 参数测量、N 节点 allreduce 补丁）。结果在 `docs/RESULTS.md`。
+- 仓库已整理好，可以直接用来做 4/8 台的活动，照 [`操作指南.md`](操作指南.md) 做即可。
+- 改进版 846e5d9（`LLAMA_COMMIT`）和原版 bd4eeaa（`LLAMA_STOCK_COMMIT`）都已发布到 fork 的 Releases，每个版本有两种安装包：
+  - 默认版：Debian 13，gcc 14；
+  - `-bookworm` 版：Debian 12 兼容版，prefill 慢约 6%，decode 一样。
+- cassian@192.168.31.30（HEAD，有模型）和 rex@192.168.31.115 已经用 `setup_pi.sh` 装好两个版本，`check_cluster.sh` 全部正常。
+- 用这两台把阶段 A 预演过一遍（`logs/*_A05_*`、`*_A06_*`、`*_A07_*`、`*_A10_*`），流程跑通。
+- 已有结论和 8 台的预测在 [`RESULTS.md`](RESULTS.md)。
 
-## 下一步（可选）
-- 借到 4 台或 8 台 Pi 时：`scripts/setup_pi.sh --model`，然后 `RPC_T=3 scripts/run_bench.sh tp`，验证 RESULTS.md 里的估算。
-- 减少每层的同步次数，或降低每次同步的固定开销（见 RESULTS.md "没做、但下一步值得做"）。
+## 下一步
+- 8 台活动：`session_8pi.sh A`，把结果填进 RESULTS.md 的"8 台实测"一节。
+- 之后可以做的：减少每层的同步次数、降低每次同步的固定开销、TP+PP 混合（见 RESULTS.md）。
 
-## 踩坑
-- 判断进程是否在运行要用 `pgrep -x`。`pgrep -f` 会匹配到等待循环自己的命令行，导致死循环。
-- zsh 里 `"$h:l"` 会被解释成"转小写"修饰符，要写成 `"${h}:path"`；zsh 也不会自动拆分 `$A` 里的多个参数，要用 `${=A}`。
-- Mac 自带的编译器坏了（CommandLineTools SDK 不匹配），所有编译都放在 Docker（`dat300-build` 镜像）里做。
-- 模拟 4 台及以上的 TP 时，要用 KV head 数能被 N 整除的模型。Qwen-0.5B 只有 2 个 KV head，会退回经过 head 中转的慢路径。
-- netem 需要 sudo。密码只通过 `PI_SUDO_PW` 环境变量传，脚本最后一定要执行 `netem.sh <host> 0` 撤掉延迟。
+## 踩坑（写脚本时注意）
+- 判断进程要用 `pgrep -x 进程名`。`pgrep -f` 会匹配到 ssh 远端 shell 自己的命令行，造成误报或死循环。
+- bash 里变量后面紧跟中文全角字符（例如 `"$REPS）"`）时，会被当成变量名的一部分，要写成 `${REPS}`。
+- zsh 里 `"$h:l"` 会被解释成"转小写"修饰符，要写成 `"${h}:路径"`；zsh 也不会自动拆分 `$A` 里的多个参数（脚本都用 bash，没有这个问题）。
+- llama-bench 的 `-dev` 用 `/` 分隔，llama-cli 用 `,` 分隔。
+- Mac 自带的编译器坏了（CommandLineTools SDK 不匹配），所有编译都放在 Docker 里做。
+- 模拟 4 台及以上的 TP 时，要用 KV head 数能被台数整除的模型。Qwen-0.5B 只有 2 个 KV head，会退回慢路径。
+- 两台之间直接 allreduce 的初始化：编号小的一方一直等在 accept，编号大的一方连接时最多重试 120 秒。8 个节点挤在一台 Mac 上时，10 秒不够，会死锁。

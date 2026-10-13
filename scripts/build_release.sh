@@ -1,38 +1,49 @@
 #!/bin/bash
-# Build Pi binaries on the Mac (Docker, linux/arm64, Debian 13 like the Pis) and optionally publish them.
-# Usage: scripts/build_release.sh [--publish] [LLAMA_SRC]
-#   LLAMA_SRC: llama.cpp checkout (default: ../llama.cpp-dat300 next to this repo)
-#   --publish: upload dist/<name>.tar.gz as a GitHub release on $LLAMA_FORK (needs gh login)
-# Output: dist/llama-<shortsha>-linux-arm64.tar.gz containing build/bin/* (static libs, -mcpu=cortex-a72)
+# 在 Mac 上用 Docker（linux/arm64）编译 Pi 用的程序，可选发布成 GitHub Release。
+# 默认按 Debian 13 编译；DISTRO=bookworm 编译 Debian 12 兼容版（文件名多一个 -bookworm）。两种都要发布。
+# 一般不需要自己跑：Release 已经发布好了，setup_pi.sh 会直接下载。只有改了 llama.cpp 代码才需要。
+#
+# 用法：scripts/build_release.sh [--publish] [COMMIT]     （COMMIT 默认是 LLAMA_COMMIT 里的改进版）
+#   需要在本仓库旁边 clone fork：git clone -b dat300 https://github.com/44sunsetsf/llama.cpp ../llama.cpp-dat300
+#   （或用 LLAMA_SRC=路径 指定）。其他 commit 会在 git worktree ../llama.cpp-dat300-<短哈希> 里编译。
+# 产物：dist/llama-<短哈希>-linux-arm64.tar.gz，解压后是 build/bin/{llama-bench,llama-cli,llama-server,llama-perplexity,ggml-rpc-server,VERSION}
+# M 系列 Mac 上约 1 分钟。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/lib.sh
 PUBLISH=0; [ "${1:-}" = --publish ] && { PUBLISH=1; shift; }
-SRC=$(cd "${1:-../llama.cpp-dat300}" && pwd)
-SHA=$(git -C "$SRC" rev-parse HEAD); SHORT=${SHA:0:7}
+SRC=$(cd "${LLAMA_SRC:-../llama.cpp-dat300}" && pwd)
+SHA=$(git -C "$SRC" rev-parse "${1:-$LLAMA_COMMIT}"); SHORT=${SHA:0:7}
+if [ "$(git -C "$SRC" rev-parse HEAD)" != "$SHA" ]; then
+  WT="$SRC-$SHORT"; [ -d "$WT" ] || git -C "$SRC" worktree add -q --detach "$WT" "$SHA"; SRC="$WT"
+fi
 DIRTY=$(git -C "$SRC" status --porcelain --untracked-files=no | head -1)
-NAME=llama-$SHORT${DIRTY:+-dirty}-linux-arm64
-docker image inspect dat300-build >/dev/null 2>&1 || docker build --platform linux/arm64 -t dat300-build docker
+DISTRO=${DISTRO:-trixie}; SUFFIX=""; [ "$DISTRO" = trixie ] || SUFFIX="-$DISTRO"
+NAME=llama-$SHORT${DIRTY:+-dirty}-linux-arm64$SUFFIX
+IMG=dat300-build-$DISTRO
+TARGETS="llama-bench llama-cli llama-server llama-perplexity ggml-rpc-server"
+docker build -q --platform linux/arm64 --build-arg BASE=debian:$DISTRO -t $IMG docker >/dev/null
 
-docker run --rm --platform linux/arm64 -v "$SRC":/src -w /src dat300-build bash -c '
+# 静态链接 llama/ggml 库（不需要 LD_LIBRARY_PATH）；-mcpu=cortex-a72 和 Pi 本机编译的指令集一致
+docker run --rm --platform linux/arm64 -v "$SRC":/src -w /src $IMG bash -c "
   set -e
-  cmake -B build-linux-arm64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_RPC=ON -DLLAMA_CURL=OFF \
+  cmake -B build-release-$DISTRO -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_RPC=ON -DLLAMA_CURL=OFF \
     -DLLAMA_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DLLAMA_OPENSSL=OFF -DGGML_NATIVE=OFF \
-    -DCMAKE_C_FLAGS="-mcpu=cortex-a72" -DCMAKE_CXX_FLAGS="-mcpu=cortex-a72" >/dev/null
-  cmake --build build-linux-arm64 -j"$(nproc)" --target llama-bench llama-cli llama-server llama-perplexity ggml-rpc-server'
+    -DCMAKE_C_FLAGS=-mcpu=cortex-a72 -DCMAKE_CXX_FLAGS=-mcpu=cortex-a72 >/dev/null
+  cmake --build build-release-$DISTRO -j\$(nproc) --target $TARGETS | tail -1"
 
-mkdir -p dist; rm -rf dist/stage; mkdir -p dist/stage/build/bin
-for b in llama-bench llama-cli llama-server llama-perplexity ggml-rpc-server; do cp "$SRC/build-linux-arm64/bin/$b" dist/stage/build/bin/; done
+rm -rf dist/stage; mkdir -p dist/stage/build/bin
+for b in $TARGETS; do cp "$SRC/build-release-$DISTRO/bin/$b" dist/stage/build/bin/; done
 echo "$SHA${DIRTY:+ (dirty)}" > dist/stage/build/bin/VERSION
 COPYFILE_DISABLE=1 tar --no-xattrs -C dist/stage -czf "dist/$NAME.tar.gz" build && rm -rf dist/stage
-echo "built dist/$NAME.tar.gz ($(du -h "dist/$NAME.tar.gz" | cut -f1))"
+echo "已生成 dist/$NAME.tar.gz（$(du -h "dist/$NAME.tar.gz" | cut -f1)）"
 
 if [ $PUBLISH = 1 ]; then
-  [ -z "$DIRTY" ] || { echo "refusing to publish a dirty tree: commit and push first"; exit 1; }
+  [ -z "$DIRTY" ] || { echo "源码有未提交的改动，先 commit 并 push 再发布"; exit 1; }
   TAG=dat300-$SHORT
   gh release view "$TAG" -R "$LLAMA_FORK" >/dev/null 2>&1 \
-    || gh release create "$TAG" -R "$LLAMA_FORK" --target "$SHA" --title "$TAG (Pi 4/400 arm64 binaries)" \
-         --notes "Static arm64 build of $SHA for Raspberry Pi 4/400 (Debian 13). Built by dat300-edge-llm/scripts/build_release.sh."
+    || gh release create "$TAG" -R "$LLAMA_FORK" --target "$SHA" --title "${TAG}（Raspberry Pi 4/400，64 位 Debian 12/13）" \
+         --notes "commit $SHA 的 arm64 静态编译版，适用于 Raspberry Pi 4/400（64 位 Debian 12 或 13）。由 dat300-edge-llm/scripts/build_release.sh 生成。"
   gh release upload "$TAG" "dist/$NAME.tar.gz" -R "$LLAMA_FORK" --clobber
-  echo "published $TAG"
+  echo "已发布 $TAG"
 fi
