@@ -4,6 +4,7 @@ DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，
 模型是 Llama-3.2-3B-Instruct Q4_0。
 
 - **下次活动照着做**：[`docs/操作指南.md`](docs/操作指南.md)（从接线到出结果，一步一步写好了）
+- **不用脚本、自己调参**：[`docs/手动使用改进版.md`](docs/手动使用改进版.md)（rpc-server 怎么起、主控上怎么跑、能调哪些参数）
 - **研究结果**：[`docs/RESULTS.md`](docs/RESULTS.md)
 - **改进版 llama.cpp**：fork [`44sunsetsf/llama.cpp`](https://github.com/44sunsetsf/llama.cpp) 的 `dat300` 分支，
   预编译包在 [Releases](https://github.com/44sunsetsf/llama.cpp/releases)
