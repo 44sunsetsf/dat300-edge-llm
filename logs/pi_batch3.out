@@ -1,0 +1,28 @@
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 rpc_t=3 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 703 779 779 703 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          5.93 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.92 ± 0.00 |
+cpu cassian@192.168.31.30: us=51 sy=5
+cpu rex@192.168.31.115: us=46 sy=2
+saved logs/tp_2n_b3_opt_t3_1014_001438.log
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 rpc_t=2 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 702 775 774 702 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          4.08 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.66 ± 0.01 |
+cpu cassian@192.168.31.30: us=37 sy=4
+cpu rex@192.168.31.115: us=32 sy=2
+saved logs/tp_2n_b3_opt_t2_1014_001625.log

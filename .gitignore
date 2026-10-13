@@ -1,0 +1,5 @@
+scripts/hosts.env
+dist/
+*.gguf
+.DS_Store
+logs/.done_*

@@ -1,0 +1,8 @@
+model=qwen2.5-0.5b-instruct-q4_k_m.gguf N=(2 4 8) netem=2ms ngen=8 host=10cpu
+N mode tg_0ms(tok/s) tg_2ms(tok/s) ms/tok_0 ms/tok_D hops/token(slope) kB/token(sum over all containers, rx+tx)
+2 layer 124.53 45.14 8.0 22.2 7.1 1285
+2 tensor 49.52 2.28 20.2 439.3 209.5 19893
+4 layer 77.94 25.23 12.8 39.6 13.4 1322
+4 tensor 10.21 0.41 97.9 2447.2 1174.6 119179
+8 layer 46.31 13.07 21.6 76.5 27.4 1422
+8 tensor 3.96 0.14 252.5 7290.2 3518.8 337456

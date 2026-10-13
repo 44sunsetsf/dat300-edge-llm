@@ -1,0 +1,13 @@
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 698 774 774 698 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          7.57 ± 0.02 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.39 ± 0.00 |
+cpu cassian@192.168.31.30: us=64 sy=5
+cpu rex@192.168.31.115: us=54 sy=2

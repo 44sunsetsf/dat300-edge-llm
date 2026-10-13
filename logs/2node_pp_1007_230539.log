@@ -1,0 +1,12 @@
+mode=pp sm=layer reps=1 commit=bd4eeaa
+| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            pp32 |          4.07 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            tg30 |          1.86 ± 0.00 |
+
+build: bd4eeaa (1)
+net_bytes head rx=18881012 tx=1109854094; worker rx=1109853380 tx=18869577
+--- vmstat finn@192.168.31.144 (avg us sy id, min free MB)
+us=31 sy=3 id=58 min_free=0MB samples=58
+--- vmstat cassian@192.168.31.30 (avg us sy id, min free MB)
+us=29 sy=2 id=63 min_free=0MB samples=58

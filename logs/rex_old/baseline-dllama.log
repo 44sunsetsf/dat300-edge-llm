@@ -1,0 +1,94 @@
+📄 AddBos: 127
+📄 BosId: 128000 (<|begin_of_text|>)
+📄 EosId: 128001 (<|end_of_text|>) 128009 (<|eot_id|>) 
+📄 RegularVocabSize: 128000
+📄 SpecialVocabSize: 256
+💡 Arch: Llama
+💡 HiddenAct: Silu
+💡 Dim: 3072
+💡 HeadDim: 128
+💡 QDim: 3072
+💡 KvDim: 1024
+💡 HiddenDim: 8192
+💡 VocabSize: 128256
+💡 nLayers: 28
+💡 nHeads: 24
+💡 nKvHeads: 8
+💡 OrigSeqLen: 131072
+💡 SeqLen: 1024
+💡 NormEpsilon: 0.000010
+💡 RopeType: Llama3.1
+💡 RopeTheta: 500000
+💡 RopeScaling: f=32.0, l=1.0, h=4.0, o=8192
+📀 RequiredMemory: 3504 MB
+🧠 CPU: neon fp16
+💿 Loading weights...
+💿 Loaded 1/28
+💿 Loaded 2/28
+💿 Loaded 3/28
+💿 Loaded 4/28
+💿 Loaded 5/28
+💿 Loaded 6/28
+💿 Loaded 7/28
+💿 Loaded 8/28
+💿 Loaded 9/28
+💿 Loaded 10/28
+💿 Loaded 11/28
+💿 Loaded 12/28
+💿 Loaded 13/28
+💿 Loaded 14/28
+💿 Loaded 15/28
+💿 Loaded 16/28
+💿 Loaded 17/28
+💿 Loaded 18/28
+💿 Loaded 19/28
+💿 Loaded 20/28
+💿 Loaded 21/28
+💿 Loaded 22/28
+💿 Loaded 23/28
+💿 Loaded 24/28
+💿 Loaded 25/28
+💿 Loaded 26/28
+💿 Loaded 27/28
+💿 Loaded 28/28
+💿 Weights loaded
+Hello world
+🔷️ Eval 1193 ms Sync    0 ms | Sent     0 kB Recv     0 kB | (2 tokens)
+🔶 Pred  558 ms Sync    0 ms | Sent     0 kB Recv     0 kB | !
+🔶 Pred  521 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  I
+🔶 Pred  521 ms Sync    0 ms | Sent     0 kB Recv     0 kB | ’m
+🔶 Pred  520 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  a
+🔶 Pred  520 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  new
+🔶 Pred  825 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  member
+🔶 Pred  520 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  of
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  this
+🔶 Pred  519 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  community
+🔶 Pred  677 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  and
+🔶 Pred  662 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  I
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB | ’m
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  excited
+🔶 Pred  521 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  to
+🔶 Pred  540 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  be
+🔶 Pred  529 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  here
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB | .
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  I
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB | ’m
+🔶 Pred  558 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  not
+🔶 Pred  559 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  really
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  sure
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  where
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  to
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  start
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB | ,
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  but
+🔶 Pred  522 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  I
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  thought
+🔶 Pred  523 ms Sync    0 ms | Sent     0 kB Recv     0 kB |  I
+
+Evaluation
+   nBatches: 32
+    nTokens: 2
+   tokens/s: 1.68 (596.67 ms/tok)
+Prediction
+    nTokens: 30
+   tokens/s: 1.83 (546.73 ms/tok)

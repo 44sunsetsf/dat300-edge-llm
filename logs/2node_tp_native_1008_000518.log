@@ -1,0 +1,18 @@
+mode=tp sm=tensor reps=3 commit=bd4eeaa
+## traffic: load-only (-p 1 -n 0), decode-only (-p 0 -n 30), prefill-only (-p 32 -n 0), all -r 1
+load    head_rx head_tx worker_rx worker_tx = 2532688 1179877647 1179872313 2524621
+decode  = 23730056 1202933720 1202929838 23721831
+prefill = 23741552 1203510435 1203505003 23735088
+decode per token (kB): head_rx=706 head_tx=768 worker_rx=768 worker_tx=706
+prefill per prompt-token (kB): head_rx=662 head_tx=738 worker_rx=738 worker_tx=662
+## performance run (-p 32 -n 30 -r 3) with vmstat
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          7.62 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.43 ± 0.01 |
+
+build: bd4eeaa (1)
+--- vmstat finn@192.168.31.144
+cpu avg: us=67 sy=4 idle=21 (78 samples)
+--- vmstat cassian@192.168.31.30
+cpu avg: us=60 sy=2 idle=30 (78 samples)

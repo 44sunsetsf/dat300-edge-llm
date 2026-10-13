@@ -1,0 +1,49 @@
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 rpc_t=4 rpc_t_head=3 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 700 779 779 700 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          5.93 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.87 ± 0.01 |
+cpu cassian@192.168.31.30: us=51 sy=5
+cpu rex@192.168.31.115: us=54 sy=2
+saved logs/tp_2n_b4_opt_h3_1014_002634.log
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 697 778 778 697 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          5.91 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.80 ± 0.00 |
+cpu cassian@192.168.31.30: us=51 sy=5
+cpu rex@192.168.31.115: us=45 sy=2
+saved logs/tp_2n_b4_t3_1014_002822.log
+mode=tp sm=tensor nodes=2 reps=2 head_local=0 rpc_t=4 rpc_t_head=3 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm tensor 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 701 780 780 701 
+## performance (-p 32 -n 30 -r 2)
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          5.91 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          2.79 ± 0.01 |
+cpu cassian@192.168.31.30: us=51 sy=5
+cpu rex@192.168.31.115: us=55 sy=2
+saved logs/tp_2n_b4_h3_1014_003010.log
+mode=pp sm=layer nodes=2 reps=2 head_local=0 rpc_t=4 rpc_t_head=3 env='' extra='' netem_ms=0
+nodes: cassian@192.168.31.30 rex@192.168.31.115
+version: bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 192.168.31.30:50052,192.168.31.115:50052 -dev RPC0/RPC1 -sm layer 
+## decode traffic per token (kB), decode-only minus load-only run, rx/tx per node in order above
+kB/token rx tx ...: 518 16 16 518 
+## performance (-p 32 -n 30 -r 2)
