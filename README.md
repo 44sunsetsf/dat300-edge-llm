@@ -43,6 +43,8 @@ python3 scripts/summarize.py                     # 结果表
 
 | 路径 | 作用 |
 |---|---|
+| `docs/网络配置.md` | **交换机和 IP**：10.77.0.0/24，每台 Pi 的用户名@IP 对照表，怎么登记新 Pi |
+| `scripts/net/pi_static_ip.sh` | 把一台 Pi 改成固定 IP（换了交换机、没有 DHCP 时用） |
 | `scripts/hosts.env.example` | Pi 列表模板。复制成 `hosts.env` 后填写，`hosts.env` 不提交 |
 | `scripts/add_keys.sh` | 把控制机的 SSH 公钥装到每台 Pi |
 | `scripts/setup_pi.sh` | 并行安装改进版和原版 llama.cpp（`--model` 准备模型，`--download-only` 只下载安装包） |

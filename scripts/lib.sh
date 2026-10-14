@@ -2,7 +2,8 @@
 # 集群相关的 IP 写在 scripts/hosts.env（不提交到 git；从 hosts.env.example 复制）。
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LIB_DIR/.." && pwd)"
-[ -f "$LIB_DIR/hosts.env" ] && source "$LIB_DIR/hosts.env"
+HOSTS_FILE=${HOSTS_FILE:-$LIB_DIR/hosts.env}   # 可以用 HOSTS_FILE=别的文件 临时换一组 Pi / 换主控
+[ -f "$HOSTS_FILE" ] && source "$HOSTS_FILE"
 : "${RPC_PORT:=50052}"
 
 LLAMA_FORK=44sunsetsf/llama.cpp

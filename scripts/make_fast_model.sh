@@ -29,7 +29,7 @@ if [ "${1:-}" = --local ]; then
   echo "在笔记本上生成……"
   docker run --rm --platform linux/arm64 -v "$BIN_LOCAL/build/bin":/b:ro -v "$SRC_DIR":/m dat300-build-trixie \
     bash -c "/b/llama-quantize $QARGS /m/$(basename "$MODEL") /m/$OUT_NAME Q4_0 4 > /dev/null"
-  echo "复制到 $HEAD（约 1.8 GB）……"; scp -q "$SRC_DIR/$OUT_NAME" "$HEAD:${OUT#\~/}"
+  echo "复制到 ${HEAD}（约 1.8 GB）……"; scp -q "$SRC_DIR/$OUT_NAME" "$HEAD:${OUT#\~/}"
 else
   free_kb=$(ssh_pi "$HEAD" "df -k --output=avail ~ | tail -1")
   [ "$free_kb" -gt 1900000 ] || { echo "[$HEAD] 磁盘只剩 $((free_kb/1024)) MB，不够（要 1.9 GB）。可以清理空间，或者用 --local 在笔记本上生成"; exit 1; }

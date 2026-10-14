@@ -34,7 +34,9 @@ install_one() {   # $1 = 用户@IP，$2 = 目标目录名（build 或 build-stoc
   local want cur; want=$(shasum -a 256 "$4" | cut -c1-16)
   cur=$(ssh_pi "$1" "cat ~/llama.cpp/$2/bin/PACKAGE 2>/dev/null" || true)
   if [ "$cur" = "$want" ]; then echo "$2 已是 ${3:0:7}"; return; fi
-  ssh_pi "$1" "set -e; rm -rf ~/llama.cpp/$2 /tmp/llama-x; mkdir -p ~/llama.cpp /tmp/llama-x
+  # 组员自己编译的 build（没有 PACKAGE 文件）不删，改名成 build.orig 保留
+  ssh_pi "$1" "set -e; d=~/llama.cpp/$2; if [ -d \$d ] && [ ! -f \$d/bin/PACKAGE ] && [ ! -e \$d.orig ]; then mv \$d \$d.orig; echo '原来的 $2 已改名为 $2.orig'; fi
+    rm -rf ~/llama.cpp/$2 /tmp/llama-x; mkdir -p ~/llama.cpp /tmp/llama-x
     tar -xzf - -C /tmp/llama-x; mv /tmp/llama-x/build ~/llama.cpp/$2; rm -rf /tmp/llama-x; echo $want > ~/llama.cpp/$2/bin/PACKAGE" < "$4"
   echo "$2 安装了 ${3:0:7}"
 }
@@ -45,13 +47,16 @@ setup_one() {
   read -r arch glibc < <(ssh_pi "$1" 'echo "$(uname -m) $(ldd --version | head -1 | grep -oE "[0-9]+\.[0-9]+$")"')
   [ "$arch" = aarch64 ] || { echo "错误：系统是 ${arch}（32 位），要用 Raspberry Pi Imager 重装 64 位 Raspberry Pi OS"; return 1; }
   if [ "$(printf '%s\n2.38\n' "$glibc" | sort -V | head -1)" != 2.38 ]; then suf="-bookworm"; echo "glibc ${glibc}，使用 Debian 12 兼容版"; fi
-  install_one "$1" build "$LLAMA_COMMIT" "$(fetch "$LLAMA_COMMIT" "$suf")"
+  # 有 Cortex-A76 大核（RK3588 等，比如 LubanCat-5）的板子，改进版用 A76 编译的版本（点积指令，快很多）；原版仍用通用版
+  local cpu=""; ssh_pi "$1" 'grep -q "CPU part.*0xd0b" /proc/cpuinfo' && { cpu="-cortex-a76"; echo "检测到 Cortex-A76，改进版使用 A76 优化版"; }
+  install_one "$1" build "$LLAMA_COMMIT" "$(fetch "$LLAMA_COMMIT" "$suf$cpu")"
   install_one "$1" build-stock "$LLAMA_STOCK_COMMIT" "$(fetch "$LLAMA_STOCK_COMMIT" "$suf")"
   ssh_pi "$1" "~/llama.cpp/build/bin/llama-bench --version 2>&1 | grep -q version && echo '可以运行' || echo '错误：llama-bench 无法运行'"
 }
 
 # 先在笔记本上把安装包下载好（并行安装时就不会重复下载）
 for c in "$LLAMA_COMMIT" "$LLAMA_STOCK_COMMIT"; do for suf in "" "-bookworm"; do fetch "$c" "$suf" >/dev/null; done; done
+for suf in "-cortex-a76" "-bookworm-cortex-a76"; do fetch "$LLAMA_COMMIT" "$suf" >/dev/null || true; done
 if [ $DL_ONLY = 1 ]; then ls -lh "$REPO_DIR"/dist/*.tar.gz; exit 0; fi
 
 pids=()
