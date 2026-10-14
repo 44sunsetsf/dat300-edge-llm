@@ -1,0 +1,23 @@
+mode=tp sm=tensor nn=2 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052 -dev RPC0/RPC1 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1    |            pp32 |          7.71 ± 0.00 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1    |            tg30 |          3.24 ± 0.00 |
+CPU 占用 us%（按节点顺序）：29/3
+温度/降频：47.7C,0x0 34C,- 
+RESULT mode=tp nn=2 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=7.71 decode=3.24 head_kb=- cpu=29/3
+每台 Pi：平均每个 decode token 的时间拆分（单位 ms；decode = 每次 allreduce 字节数最小的那些段）
+
+节点                     token数      总时间       计算       同步     其中网络     本地加     收发数据     空等主控     同步次数
+cat_10.77.0.6              30    310.9     64.9    201.5    200.7     0.4      0.6     41.5       56
+rex_10.77.0.4              30    311.7    292.2      7.9      5.6     1.0      1.4      6.8       56
+
+说明：
+- 总时间 ≈ 计算 + 同步 + 收发数据 + 空等主控。1000 ÷ 总时间 ≈ decode 速度（tok/s）。
+- 同步里的"网络"包括等对方 Pi 算完：如果某台 Pi 的网络时间明显比别人短，说明大家都在等它（它最慢）。
+- 空等主控：rpc-server 没事做、在等主控发命令的时间（主控在采样、取 logits、调度）。
+明细已写到 /Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/trace/tp_2n_opt_H01_tp2_rexcat_1014_173045/segments.csv 和 allreduce.csv。

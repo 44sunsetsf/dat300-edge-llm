@@ -1,0 +1,14 @@
+mode=tp sm=tensor nn=4 build=stock reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 4563 49861 16624 1457 16622 1562 16614 1543 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          5.83 ± 0.02 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          1.09 ± 0.00 |
+CPU 占用 us%（按节点顺序）：27/15/16/16
+温度/降频：40.9C,0x0 37.4C,0x0 38.4C,0x0 58.9C,0x0 
+RESULT mode=tp nn=4 build=stock rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=5.83 decode=1.09 head_kb=4563/49861 cpu=27/15/16/16

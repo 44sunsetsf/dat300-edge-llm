@@ -1,0 +1,12 @@
+mode=single sm=none nn=1 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4  -ub 512
+## 速度（-p 512 -n 16 -r 1 -ub 512）
+| model                          |       size |     params | backend    | threads |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | CPU        |       4 |           pp512 |          4.06 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | CPU        |       4 |            tg16 |          1.83 ± 0.00 |
+CPU 占用 us%（按节点顺序）：90
+温度/降频：54.5C,0x0 
+RESULT mode=single nn=1 build=opt rpc_t=4 rpc_t_head=4 env= extra=,ub=512 netem_ms=0 prefill=4.06 decode=1.83 head_kb=- cpu=90

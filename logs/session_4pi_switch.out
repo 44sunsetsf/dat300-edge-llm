@@ -1,0 +1,249 @@
+提醒：hosts.env 里只有 4 台，超过台数的项目会被跳过
+== 跳过 A01_tp8_opt_t3（台数不够）
+== 跳过 A02_tp8_stock_t3（台数不够）
+== 开始 A03_tp4_opt_t3：NN=4 RPC_T=3
+mode=tp sm=tensor nn=4 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 1455 1627 1475 1360 1478 1452 1475 1445 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          9.68 ± 0.11 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          2.99 ± 0.01 |
+CPU 占用 us%（按节点顺序）：39/24/25/24
+温度/降频：43.3C,0x0 38.9C,0x0 40.9C,0x0 60.8C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=9.68 decode=2.99 head_kb=1455/1627 cpu=39/24/25/24
+已保存 logs/tp_4n_opt_A03_tp4_opt_t3_1014_154457.log
+== 开始 A04_tp4_stock_t3：NN=4 RPC_T=3 BUILD=stock
+mode=tp sm=tensor nn=4 build=stock reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 4394 49862 16620 1409 16624 1544 16616 1440 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          5.77 ± 0.01 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          1.03 ± 0.00 |
+CPU 占用 us%（按节点顺序）：26/16/16/16
+温度/降频：40.9C,0x0 39.4C,0x0 39.9C,0x0 60.8C,0x0 
+RESULT mode=tp nn=4 build=stock rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=5.77 decode=1.03 head_kb=4394/49862 cpu=26/16/16/16
+已保存 logs/tp_4n_stock_A04_tp4_stock_t3_1014_154724.log
+== 开始 A05_tp2_opt_t3：NN=2 RPC_T=3
+mode=tp sm=tensor nn=2 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052 -dev RPC0/RPC1 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 702 773 773 702 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            pp32 |          5.94 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            tg30 |          3.00 ± 0.00 |
+CPU 占用 us%（按节点顺序）：52/45
+温度/降频：46.7C,0x0 44.3C,0x0 
+RESULT mode=tp nn=2 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=5.94 decode=3.00 head_kb=702/773 cpu=52/45
+已保存 logs/tp_2n_opt_A05_tp2_opt_t3_1014_155056.log
+== 开始 A06_tp2_stock_t3：NN=2 RPC_T=3 BUILD=stock
+mode=tp sm=tensor nn=2 build=stock reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2
+版本：bd4eeaa047006cb1fe71999fbd11134b5836e167
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052 -dev RPC0/RPC1 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 696 776 776 696 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            pp32 |          5.93 ± 0.01 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            tg30 |          2.86 ± 0.00 |
+CPU 占用 us%（按节点顺序）：51/44
+温度/降频：47.7C,0x0 43.3C,0x0 
+RESULT mode=tp nn=2 build=stock rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=5.93 decode=2.86 head_kb=696/776 cpu=51/44
+已保存 logs/tp_2n_stock_A06_tp2_stock_t3_1014_155241.log
+== 开始 A07_single：
+mode=single sm=none nn=1 build=opt reps=2 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | threads |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | ------: | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | CPU        |       4 |            pp32 |          4.14 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | CPU        |       4 |            tg30 |          1.84 ± 0.00 |
+CPU 占用 us%（按节点顺序）：90
+温度/降频：49.1C,0x0 
+RESULT mode=single nn=1 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=4.14 decode=1.84 head_kb=- cpu=90
+已保存 logs/single_1n_opt_A07_single_1014_155428.log
+== 跳过 A08_pp8（台数不够）
+== 开始 A09_pp4：NN=4
+mode=pp sm=layer nn=4 build=opt reps=2 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 547 51 16 13 16 13 18 520 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1/RPC2/RPC3 |            pp32 |          4.01 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1/RPC2/RPC3 |            tg30 |          1.84 ± 0.01 |
+CPU 占用 us%（按节点顺序）：20/15/16/18
+温度/降频：41.3C,0x0 38.9C,0x0 39.9C,0x0 60.3C,0x0 
+RESULT mode=pp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=4.01 decode=1.84 head_kb=547/51 cpu=20/15/16/18
+已保存 logs/pp_4n_opt_A09_pp4_1014_155527.log
+== 开始 A10_pp2：NN=2
+mode=pp sm=layer nn=2 build=opt reps=2 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052 -dev RPC0/RPC1 -sm layer 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 519 17 17 519 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            pp32 |          4.12 ± 0.01 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            tg30 |          1.88 ± 0.00 |
+CPU 占用 us%（按节点顺序）：37/34
+温度/降频：43.8C,0x0 42.3C,0x0 
+RESULT mode=pp nn=2 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=4.12 decode=1.88 head_kb=519/17 cpu=37/34
+已保存 logs/pp_2n_opt_A10_pp2_1014_155803.log
+| 模式 | 台数 | 版本 | rpc线程(HEAD) | 额外设置 | 加延迟 | prefill tok/s | decode tok/s | ms/token | 相对单机 | HEAD 流量 收/发 kB | CPU% | 日志 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.15 | 1.85 | 541 | 1.00x | - | 90 | single_1n_opt_A07_single_1014_010833.log |
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.14 | 1.84 | 543 | 0.99x | - | 90 | single_1n_opt_A07_single_1014_155428.log |
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.15 | 1.85 | 541 | 1.00x | - | 90 | single_1n_opt_switch_1014_153943.log |
+| tp | 4 | 改进版 | 3(3) | - | 0 ms | 9.68 | 2.99 | 334 | 1.62x | 1455/1627 | 39/24/25/24 | tp_4n_opt_A03_tp4_opt_t3_1014_154457.log |
+| tp | 4 | 原版 | 3(3) | - | 0 ms | 5.77 | 1.03 | 971 | 0.56x | 4394/49862 | 26/16/16/16 | tp_4n_stock_A04_tp4_stock_t3_1014_154724.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.92 | 2.93 | 341 | 1.58x | 702/780 | 52/45 | tp_2n_opt_A05_tp2_opt_t3_1014_010457.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.94 | 3.00 | 333 | 1.62x | 702/773 | 52/45 | tp_2n_opt_A05_tp2_opt_t3_1014_155056.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.97 | 3.21 | 312 | 1.74x | 700/781 | 52/46 | tp_2n_opt_B07_tp2_fast_1014_030434.log |
+| tp | 2 | 改进版 | 3(3) | -p 1 2 4 8 -n 0 | 0 ms | 5.93 | 2.94 | 340 | 1.59x | - | 43/37 | tp_2n_opt_batch_1014_014351.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.96 | 3.19 | 313 | 1.72x | - | 36/32 | tp_2n_opt_fastmodel_Llama-3.2-3B-Instruct-Q4_0-embQ40_1014_025830.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.91 | 2.93 | 341 | 1.58x | - | 40/36 | tp_2n_opt_fastmodel_Llama-3.2-3B-Instruct-Q4_0_1014_025643.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.92 | 2.89 | 346 | 1.56x | - | 24/20 | tp_2n_opt_final_check_1014_031008.log |
+| tp | 2 | 改进版 | 3(3) | GGML_RPC_COMM_ALGO=rd | 0 ms | 5.93 | 2.91 | 344 | 1.57x | - | 44/38 | tp_2n_opt_final_rd_1014_031125.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.94 | 3.00 | 333 | 1.62x | 708/780 | 52/44 | tp_2n_opt_switch_1014_153310.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.90 | 2.90 | 345 | 1.57x | - | 47/39 | tp_2n_opt_trace_example_1014_013805.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.92 | 2.81 | 356 | 1.52x | 702/779 | 51/45 | tp_2n_stock_A06_tp2_stock_t3_1014_010645.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.93 | 2.86 | 350 | 1.55x | 696/776 | 51/44 | tp_2n_stock_A06_tp2_stock_t3_1014_155241.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.94 | 2.86 | 350 | 1.55x | 702/782 | 16/14 | tp_2n_stock_switch_1014_153557.log |
+| pp | 4 | 改进版 | 4(4) | - | 0 ms | 4.01 | 1.84 | 543 | 0.99x | 547/51 | 20/15/16/18 | pp_4n_opt_A09_pp4_1014_155527.log |
+| pp | 3 | 改进版 | 4(4) | - | 0 ms | 4.07 | 1.83 | 546 | 0.99x | 534/34 | 25/21/24 | pp_3n_opt_switch_1014_154042.log |
+| pp | 2 | 改进版 | 4(4) | - | 0 ms | 4.10 | 1.81 | 552 | 0.98x | 520/18 | 36/35 | pp_2n_opt_A10_pp2_1014_010932.log |
+| pp | 2 | 改进版 | 4(4) | - | 0 ms | 4.12 | 1.88 | 532 | 1.02x | 519/17 | 37/34 | pp_2n_opt_A10_pp2_1014_155803.log |
+提醒：hosts.env 里只有 4 台，超过台数的项目会被跳过
+== 跳过 B01_tp8_ag（台数不够）
+== 开始 B02_tp4_ag：NN=4 RPC_T=3 ENV=GGML_RPC_COMM_ALGO=ag
+mode=tp sm=tensor nn=4 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='GGML_RPC_COMM_ALGO=ag' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 2116 2332 2182 2181 2182 2107 2181 2041 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          9.76 ± 0.04 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          2.98 ± 0.02 |
+CPU 占用 us%（按节点顺序）：39/24/25/24
+温度/降频：45.2C,0x0 41.3C,0x0 41.3C,0x0 64.7C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=3 env=GGML_RPC_COMM_ALGO=ag extra= netem_ms=0 prefill=9.76 decode=2.98 head_kb=2116/2332 cpu=39/24/25/24
+已保存 logs/tp_4n_opt_B02_tp4_ag_1014_160021.log
+== 跳过 B03_tp8_opt_t4（台数不够）
+== 跳过 B04_tp8_opt_h3（台数不够）
+== 跳过 B05_tp8_fast（台数不够）
+== 开始 B06_tp4_fast：NN=4 RPC_T=3 MODEL=~/exp/models/Llama-3.2-3B-Instruct-Q4_0-embQ40.gguf
+mode=tp sm=tensor nn=4 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-embQ40.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 1637 1624 1475 1488 1478 1464 1474 1487 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.69 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          9.78 ± 0.05 |
+| llama 3B Q4_0                  |   1.69 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          3.25 ± 0.01 |
+CPU 占用 us%（按节点顺序）：41/25/26/24
+温度/降频：44.3C,0x0 39.9C,0x0 42.3C,0x0 64.7C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=9.78 decode=3.25 head_kb=1637/1624 cpu=41/25/26/24
+已保存 logs/tp_4n_opt_B06_tp4_fast_1014_160248.log
+== 开始 B07_tp2_fast：NN=2 RPC_T=3 MODEL=~/exp/models/Llama-3.2-3B-Instruct-Q4_0-embQ40.gguf
+mode=tp sm=tensor nn=2 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-embQ40.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052 -dev RPC0/RPC1 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 695 780 780 695 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.69 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            pp32 |          5.98 ± 0.00 |
+| llama 3B Q4_0                  |   1.69 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1    |            tg30 |          3.26 ± 0.00 |
+CPU 占用 us%（按节点顺序）：53/45
+温度/降频：47.2C,0x0 44.3C,0x0 
+RESULT mode=tp nn=2 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=5.98 decode=3.26 head_kb=695/780 cpu=53/45
+已保存 logs/tp_2n_opt_B07_tp2_fast_1014_160609.log
+== 跳过 B08_tp8_batch（台数不够）
+== 跳过 B09_tp8_trace（台数不够）
+== 开始 B10_tp4_trace：NN=4 RPC_T=3 TRACE=1
+mode=tp sm=tensor nn=4 build=opt reps=1 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          9.79 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          2.94 ± 0.00 |
+CPU 占用 us%（按节点顺序）：19/11/11/11
+温度/降频：44.3C,0x0 41.8C,0x0 39.9C,0x0 62.8C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=9.79 decode=2.94 head_kb=- cpu=19/11/11/11
+每台 Pi：平均每个 decode token 的时间拆分（单位 ms；decode = 每次 allreduce 字节数最小的那些段）
+
+节点                     token数      总时间       计算       同步     其中网络     本地加     收发数据     空等主控     同步次数
+finn_10.77.0.2             30    343.0    191.3    125.7    124.0     0.3      0.7     22.2       56
+pi_10.77.0.3               30    341.9    205.5    116.4    114.8     0.3      0.9     17.1       56
+pi_10.77.0.5               30    343.0    192.6    124.1    122.5     0.3      0.8     22.4       56
+rex_10.77.0.4              30    342.4    294.3     26.1     24.4     0.4      1.3     18.1       56
+
+说明：
+- 总时间 ≈ 计算 + 同步 + 收发数据 + 空等主控。1000 ÷ 总时间 ≈ decode 速度（tok/s）。
+- 同步里的"网络"包括等对方 Pi 算完：如果某台 Pi 的网络时间明显比别人短，说明大家都在等它（它最慢）。
+- 空等主控：rpc-server 没事做、在等主控发命令的时间（主控在采样、取 logits、调度）。
+明细已写到 /Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/trace/tp_4n_opt_B10_tp4_trace_1014_160744/segments.csv 和 allreduce.csv。
+计时日志：logs/trace/tp_4n_opt_B10_tp4_trace_1014_160744/
+已保存 logs/tp_4n_opt_B10_tp4_trace_1014_160744.log
+| 模式 | 台数 | 版本 | rpc线程(HEAD) | 额外设置 | 加延迟 | prefill tok/s | decode tok/s | ms/token | 相对单机 | HEAD 流量 收/发 kB | CPU% | 日志 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.15 | 1.85 | 541 | 1.00x | - | 90 | single_1n_opt_A07_single_1014_010833.log |
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.14 | 1.84 | 543 | 0.99x | - | 90 | single_1n_opt_A07_single_1014_155428.log |
+| single | 1 | 改进版 | 4(4) | - | 0 ms | 4.15 | 1.85 | 541 | 1.00x | - | 90 | single_1n_opt_switch_1014_153943.log |
+| tp | 4 | 改进版 | 3(3) | - | 0 ms | 9.68 | 2.99 | 334 | 1.62x | 1455/1627 | 39/24/25/24 | tp_4n_opt_A03_tp4_opt_t3_1014_154457.log |
+| tp | 4 | 改进版 | 3(3) | GGML_RPC_COMM_ALGO=ag | 0 ms | 9.76 | 2.98 | 336 | 1.61x | 2116/2332 | 39/24/25/24 | tp_4n_opt_B02_tp4_ag_1014_160021.log |
+| tp | 4 | 改进版 | 3(3) | - | 0 ms | 9.78 | 3.25 | 308 | 1.76x | 1637/1624 | 41/25/26/24 | tp_4n_opt_B06_tp4_fast_1014_160248.log |
+| tp | 4 | 改进版 | 3(3) | - | 0 ms | 9.79 | 2.94 | 340 | 1.59x | - | 19/11/11/11 | tp_4n_opt_B10_tp4_trace_1014_160744.log |
+| tp | 4 | 原版 | 3(3) | - | 0 ms | 5.77 | 1.03 | 971 | 0.56x | 4394/49862 | 26/16/16/16 | tp_4n_stock_A04_tp4_stock_t3_1014_154724.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.92 | 2.93 | 341 | 1.58x | 702/780 | 52/45 | tp_2n_opt_A05_tp2_opt_t3_1014_010457.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.94 | 3.00 | 333 | 1.62x | 702/773 | 52/45 | tp_2n_opt_A05_tp2_opt_t3_1014_155056.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.97 | 3.21 | 312 | 1.74x | 700/781 | 52/46 | tp_2n_opt_B07_tp2_fast_1014_030434.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.98 | 3.26 | 307 | 1.76x | 695/780 | 53/45 | tp_2n_opt_B07_tp2_fast_1014_160609.log |
+| tp | 2 | 改进版 | 3(3) | -p 1 2 4 8 -n 0 | 0 ms | 5.93 | 2.94 | 340 | 1.59x | - | 43/37 | tp_2n_opt_batch_1014_014351.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.96 | 3.19 | 313 | 1.72x | - | 36/32 | tp_2n_opt_fastmodel_Llama-3.2-3B-Instruct-Q4_0-embQ40_1014_025830.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.91 | 2.93 | 341 | 1.58x | - | 40/36 | tp_2n_opt_fastmodel_Llama-3.2-3B-Instruct-Q4_0_1014_025643.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.92 | 2.89 | 346 | 1.56x | - | 24/20 | tp_2n_opt_final_check_1014_031008.log |
+| tp | 2 | 改进版 | 3(3) | GGML_RPC_COMM_ALGO=rd | 0 ms | 5.93 | 2.91 | 344 | 1.57x | - | 44/38 | tp_2n_opt_final_rd_1014_031125.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.94 | 3.00 | 333 | 1.62x | 708/780 | 52/44 | tp_2n_opt_switch_1014_153310.log |
+| tp | 2 | 改进版 | 3(3) | - | 0 ms | 5.90 | 2.90 | 345 | 1.57x | - | 47/39 | tp_2n_opt_trace_example_1014_013805.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.92 | 2.81 | 356 | 1.52x | 702/779 | 51/45 | tp_2n_stock_A06_tp2_stock_t3_1014_010645.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.93 | 2.86 | 350 | 1.55x | 696/776 | 51/44 | tp_2n_stock_A06_tp2_stock_t3_1014_155241.log |
+| tp | 2 | 原版 | 3(3) | - | 0 ms | 5.94 | 2.86 | 350 | 1.55x | 702/782 | 16/14 | tp_2n_stock_switch_1014_153557.log |
+| pp | 4 | 改进版 | 4(4) | - | 0 ms | 4.01 | 1.84 | 543 | 0.99x | 547/51 | 20/15/16/18 | pp_4n_opt_A09_pp4_1014_155527.log |
+| pp | 3 | 改进版 | 4(4) | - | 0 ms | 4.07 | 1.83 | 546 | 0.99x | 534/34 | 25/21/24 | pp_3n_opt_switch_1014_154042.log |
+| pp | 2 | 改进版 | 4(4) | - | 0 ms | 4.10 | 1.81 | 552 | 0.98x | 520/18 | 36/35 | pp_2n_opt_A10_pp2_1014_010932.log |
+| pp | 2 | 改进版 | 4(4) | - | 0 ms | 4.12 | 1.88 | 532 | 1.02x | 519/17 | 37/34 | pp_2n_opt_A10_pp2_1014_155803.log |

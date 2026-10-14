@@ -1,0 +1,25 @@
+mode=tp sm=tensor nn=4 build=opt reps=2 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |         10.07 ± 0.04 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          4.85 ± 0.06 |
+CPU 占用 us%（按节点顺序）：22/16/17/16
+温度/降频：43.3C,0x0 40.4C,0x0 40.4C,0x0 62.3C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=3 env= extra= netem_ms=0 prefill=10.07 decode=4.85 head_kb=- cpu=22/16/17/16
+每台 Pi：平均每个 decode token 的时间拆分（单位 ms；decode = 每次 allreduce 字节数最小的那些段）
+
+节点                     token数      总时间       计算       同步     其中网络     本地加     收发数据     空等主控     同步次数
+finn_10.77.0.2             60    207.5    131.0     40.0     38.4     0.3      1.1     34.3       56
+pi_10.77.0.3               60    207.1    139.7     33.3     31.6     0.3      1.1     32.3       56
+pi_10.77.0.5               60    207.5    132.3     39.1     37.3     0.3      1.1     33.9       56
+rex_10.77.0.4              60    207.3    142.7     29.6     27.8     0.3      1.0     33.1       56
+
+说明：
+- 总时间 ≈ 计算 + 同步 + 收发数据 + 空等主控。1000 ÷ 总时间 ≈ decode 速度（tok/s）。
+- 同步里的"网络"包括等对方 Pi 算完：如果某台 Pi 的网络时间明显比别人短，说明大家都在等它（它最慢）。
+- 空等主控：rpc-server 没事做、在等主控发命令的时间（主控在采样、取 logits、调度）。
+明细已写到 /Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/trace/tp_4n_opt_U1_untied_1014_163229/segments.csv 和 allreduce.csv。

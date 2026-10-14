@@ -1,0 +1,17 @@
+== 跳过 T01_tp4_stock_untied（已完成）
+== 跳过 T02_tp2_untied（已完成）
+== 跳过 T03_tp4_untied_t4（已完成）
+== 跳过 T04_tp4_untied_ag（已完成）
+== 跳过 T05_tp2_untied_trace（已完成）
+== 跳过 T06_single_untied（已完成）
+== 跳过 T07_tp4_untied_long（已完成）
+== 跳过 T08_tp4_orig_long（已完成）
+== 跳过 P01_single_p512_ub512（已完成）
+== 跳过 P02_single_p512_ub128（已完成）
+== 跳过 P03_pp4_p512_ub512（已完成）
+== 开始 P05_pp4_p512_ub128：NN=4 RPC_T=4 P=512 N=16 UB=128 TRAFFIC=0
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer  -ub 128
+## 速度（-p 512 -n 16 -r 1 -ub 128）

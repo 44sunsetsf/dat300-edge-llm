@@ -33,34 +33,32 @@ if [ "$PART" = T ] || [ "$PART" = all ]; then
 fi
 
 if [ "$PART" = P ] || [ "$PART" = all ]; then
-  # PP ①：长 prompt 切块后的流水线 prefill（-ub 越小块越多；单机做对照）
+  # PP ①：prompt 切块后的流水线 prefill（定性）。-ub = 每块的 token 数：128 = 整段一块（没有流水线），32 = 切成 4 块（4 台同时干活）
+  # （P01–P03 是早先 prompt 512 的版本，保留作参考）
   run P01_single_p512_ub512 single 1 RPC_T=4 P=512 N=16 UB=512
   run P02_single_p512_ub128 single 1 RPC_T=4 P=512 N=16 UB=128
   run P03_pp4_p512_ub512    pp 1 NN=4 RPC_T=4 P=512 N=16 UB=512 TRAFFIC=0
-  run P04_pp4_p512_ub256    pp 1 NN=4 RPC_T=4 P=512 N=16 UB=256 TRAFFIC=0
-  run P05_pp4_p512_ub128    pp 1 NN=4 RPC_T=4 P=512 N=16 UB=128 TRAFFIC=0
-  run P06_pp4_p512_ub64     pp 1 NN=4 RPC_T=4 P=512 N=16 UB=64 TRAFFIC=0
-  run P07_pp2_p512_ub128    pp 1 NN=2 RPC_T=4 P=512 N=16 UB=128 TRAFFIC=0
-  run P08_pp4_p512_ub32     pp 1 NN=4 RPC_T=4 P=512 N=16 UB=32 TRAFFIC=0
-  # PP ②：同时处理多个请求的总吞吐（每个请求 64 token prompt + 生成 32 token）
-  B="-npp 64 -ntg 32 -npl 1,2,4,8"
+  run P04_single_p128_ub32  single 1 RPC_T=4 P=128 N=8 UB=32
+  run P05_pp4_p128_ub128    pp 1 NN=4 RPC_T=4 P=128 N=8 UB=128 TRAFFIC=0
+  run P06_pp4_p128_ub32     pp 1 NN=4 RPC_T=4 P=128 N=8 UB=32 TRAFFIC=0
+  # PP ②：同时处理多个请求的总吞吐（每个请求 32 token prompt + 生成 16 token，1/4/8 个请求）
+  B="-npp 32 -ntg 16 -npl 1,4,8"
   run P11_single_batched single 1 RPC_T=4 BATCHED="$B"
   run P12_pp4_batched    pp 1 NN=4 RPC_T=4 BATCHED="$B"
-  run P13_tp4_batched    tp 1 NN=4 RPC_T=3 MODEL="$UNTIED" BATCHED="$B"
+  run P13_tp4_batched    tp 1 NN=4 RPC_T=4 MODEL="$UNTIED" BATCHED="$B"
   # PP ③：多请求 + 小 ubatch，让 decode 也在 4 台之间流水线起来（8 个请求、每块 2 个，4 块同时在不同的 Pi 上）
-  run P14_pp4_batched_ub2 pp 1 NN=4 RPC_T=4 UB=2 BATCHED="-npp 64 -ntg 32 -npl 8"
+  run P14_pp4_batched_ub2 pp 1 NN=4 RPC_T=4 UB=2 BATCHED="-npp 32 -ntg 16 -npl 8"
 fi
 
 if [ "$PART" = H ] || [ "$PART" = all ]; then
   # 异构：cat（RK3588，单机 decode 12.3）和 Pi 混用。-ts 是每台分到的比例（llama-bench 用 / 分隔）
-  run H01_tp2_rexcat          tp 2 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=3 MODEL="$UNTIED" TRAFFIC=0
-  run H02_tp2_rexcat_ts14     tp 2 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=3 MODEL="$UNTIED" TRAFFIC=0 EXTRA="-ts 1/4"
-  run H03_pp2_rexcat          pp 2 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 TRAFFIC=0
-  run H04_pp2_rexcat_ts16     pp 2 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 TRAFFIC=0 EXTRA="-ts 1/6"
-  run H05_tp4_cat3pi          tp 2 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=3 MODEL="$UNTIED" TRAFFIC=0
-  run H06_tp4_cat3pi_ts       tp 2 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=3 MODEL="$UNTIED" TRAFFIC=0 EXTRA="-ts 1/4/1/1"
-  run H07_pp4_cat3pi_ts_ub64  pp 1 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=4 P=512 N=16 UB=64 TRAFFIC=0 EXTRA="-ts 1/12/1/1"
-  run H08_pp4_cat3pi_ub64     pp 1 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=4 P=512 N=16 UB=64 TRAFFIC=0
+  run H01_tp2_rexcat          tp 1 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 MODEL="$UNTIED" TRAFFIC=0
+  run H02_tp2_rexcat_ts14     tp 1 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 MODEL="$UNTIED" TRAFFIC=0 EXTRA="-ts 1/4"
+  run H03_pp2_rexcat          pp 1 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 TRAFFIC=0
+  run H04_pp2_rexcat_ts16     pp 1 HOSTS_FILE="$HOSTS_CAT" NN=2 RPC_T=4 TRAFFIC=0 EXTRA="-ts 1/6"
+  run H05_tp4_cat3pi          tp 1 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=4 MODEL="$UNTIED" TRAFFIC=0
+  run H07_pp4_cat3pi_ub32     pp 1 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=4 P=128 N=8 UB=32 TRAFFIC=0
+  run H08_pp4_cat3pi_ts_ub32  pp 1 HOSTS_FILE="$HOSTS_CAT" NN=4 RPC_T=4 P=128 N=8 UB=32 TRAFFIC=0 EXTRA="-ts 1/12/1/1"
 fi
 rm -f "$HOSTS_CAT"
 echo "全部完成。汇总：python3 scripts/summarize.py"

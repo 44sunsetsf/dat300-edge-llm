@@ -1,0 +1,12 @@
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer  -ub 128
+## 速度（-p 128 -n 8 -r 1 -ub 128）
+| model                          |       size |     params | backend    | ngl | n_ubatch | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -------: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |      128 | RPC0/RPC1/RPC2/RPC3 |           pp128 |          4.16 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |      128 | RPC0/RPC1/RPC2/RPC3 |             tg8 |          1.88 ± 0.00 |
+CPU 占用 us%（按节点顺序）：22/17/17/14
+温度/降频：44.3C,0x0 37.9C,0x0 41.3C,0x0 62.8C,0x80000 
+RESULT mode=pp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra=,ub=128 netem_ms=0 prefill=4.16 decode=1.88 head_kb=- cpu=22/17/17/14

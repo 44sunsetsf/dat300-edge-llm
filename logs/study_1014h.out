@@ -1,0 +1,86 @@
+== 跳过 H01_tp2_rexcat（已完成）
+== 开始 H02_tp2_rexcat_ts14：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=2 RPC_T=4 MODEL=~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf TRAFFIC=0 EXTRA=-ts 1/4
+mode=tp sm=tensor nn=2 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='-ts 1/4' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052 -dev RPC0/RPC1 -sm tensor -ts 1/4
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl |     sm | dev          | ts           |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1    | 1.00/4.00    |            pp32 |         17.17 ± 0.00 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1    | 1.00/4.00    |            tg30 |          7.00 ± 0.00 |
+CPU 占用 us%（按节点顺序）：31/11
+温度/降频：47.2C,0x0 36C,- 
+RESULT mode=tp nn=2 build=opt rpc_t=4 rpc_t_head=4 env= extra=-ts,1/4 netem_ms=0 prefill=17.17 decode=7.00 head_kb=- cpu=31/11
+已保存 logs/tp_2n_opt_H02_tp2_rexcat_ts14_1014_173204.log
+== 开始 H03_pp2_rexcat：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=2 RPC_T=4 TRAFFIC=0
+mode=pp sm=layer nn=2 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052 -dev RPC0/RPC1 -sm layer 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            pp32 |          6.25 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    |            tg30 |          3.07 ± 0.00 |
+CPU 占用 us%（按节点顺序）：22/3
+温度/降频：46.2C,0x0 34C,- 
+RESULT mode=pp nn=2 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=6.25 decode=3.07 head_kb=- cpu=22/3
+已保存 logs/pp_2n_opt_H03_pp2_rexcat_1014_173238.log
+== 开始 H04_pp2_rexcat_ts16：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=2 RPC_T=4 TRAFFIC=0 EXTRA=-ts 1/6
+mode=pp sm=layer nn=2 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='-ts 1/6' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052 -dev RPC0/RPC1 -sm layer -ts 1/6
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl | dev          | ts           |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    | 1.00/6.00    |            pp32 |         10.57 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1    | 1.00/6.00    |            tg30 |          5.52 ± 0.00 |
+CPU 占用 us%（按节点顺序）：21/9
+温度/降频：43.8C,0x0 35C,- 
+RESULT mode=pp nn=2 build=opt rpc_t=4 rpc_t_head=4 env= extra=-ts,1/6 netem_ms=0 prefill=10.57 decode=5.52 head_kb=- cpu=21/9
+已保存 logs/pp_2n_opt_H04_pp2_rexcat_ts16_1014_173401.log
+== 开始 H05_tp4_cat3pi：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=4 RPC_T=4 MODEL=~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf TRAFFIC=0
+mode=tp sm=tensor nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6 finn@10.77.0.2 pi@10.77.0.3
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052,10.77.0.2:50052,10.77.0.3:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |         12.28 ± 0.00 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          4.57 ± 0.00 |
+CPU 占用 us%（按节点顺序）：17/2/12/12
+温度/降频：45.7C,0x0 34C,- 38.9C,0x0 40.4C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=12.28 decode=4.57 head_kb=- cpu=17/2/12/12
+已保存 logs/tp_4n_opt_H05_tp4_cat3pi_1014_173442.log
+== 开始 H07_pp4_cat3pi_ub32：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=4 RPC_T=4 P=128 N=8 UB=32 TRAFFIC=0
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6 finn@10.77.0.2 pi@10.77.0.3
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052,10.77.0.2:50052,10.77.0.3:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer  -ub 32
+## 速度（-p 128 -n 8 -r 1 -ub 32）
+| model                          |       size |     params | backend    | ngl | n_ubatch | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -------: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       32 | RPC0/RPC1/RPC2/RPC3 |           pp128 |          6.07 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       32 | RPC0/RPC1/RPC2/RPC3 |             tg8 |          2.12 ± 0.00 |
+CPU 占用 us%（按节点顺序）：21/2/16/13
+温度/降频：42.8C,0x0 33C,- 38.9C,0x0 39.9C,0x0 
+RESULT mode=pp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra=,ub=32 netem_ms=0 prefill=6.07 decode=2.12 head_kb=- cpu=21/2/16/13
+已保存 logs/pp_4n_opt_H07_pp4_cat3pi_ub32_1014_173604.log
+== 开始 H08_pp4_cat3pi_ts_ub32：HOSTS_FILE=/var/folders/nw/tqlz2frs54l020phkfsh7f_80000gn/T/tmp.UpVIgY7pzf NN=4 RPC_T=4 P=128 N=8 UB=32 TRAFFIC=0 EXTRA=-ts 1/12/1/1
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='-ts 1/12/1/1' netem_ms=0
+节点：rex@10.77.0.4 cat@10.77.0.6 finn@10.77.0.2 pi@10.77.0.3
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.6:50052,10.77.0.2:50052,10.77.0.3:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer -ts 1/12/1/1 -ub 32
+## 速度（-p 128 -n 8 -r 1 -ub 32）
+| model                          |       size |     params | backend    | ngl | n_ubatch | dev          | ts           |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -------: | ------------ | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       32 | RPC0/RPC1/RPC2/RPC3 | 1.00/12.00/1.00/1.00 |           pp128 |         13.12 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       32 | RPC0/RPC1/RPC2/RPC3 | 1.00/12.00/1.00/1.00 |             tg8 |          3.47 ± 0.00 |
+CPU 占用 us%（按节点顺序）：15/15/7/2
+温度/降频：42.3C,0x0 34C,- 38.9C,0x0 38.4C,0x0 
+RESULT mode=pp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra=-ts,1/12/1/1,ub=32 netem_ms=0 prefill=13.12 decode=3.47 head_kb=- cpu=15/15/7/2
+已保存 logs/pp_4n_opt_H08_pp4_cat3pi_ts_ub32_1014_173753.log
+全部完成。汇总：python3 scripts/summarize.py

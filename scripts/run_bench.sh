@@ -45,7 +45,7 @@ for s in $SERVERS; do
   T=${RPC_T:-4}; [ "$s" = "$HEAD" ] && T=${RPC_T_HEAD:-$T}
   # 有 A76 大核的板子（RK3588，比如 cat）：rpc-server 绑在 4 个大核上、用 4 线程（小核会拖慢；实测 8 线程比 4 大核慢 18%）
   ssh_pi "$s" "mkdir -p ~/exp/logs; cd $BIN; T=$T; P=; grep -q 'CPU part.*0xd0b' /proc/cpuinfo && { P='taskset -c 4-7'; T=4; }
-    $TRACE_ENV nohup \$P ./ggml-rpc-server -H 0.0.0.0 -p $RPC_PORT -t \$T $RPC_C > ~/exp/logs/rpc.log 2>&1 < /dev/null &
+    $TRACE_ENV nohup sh -c \"exec \$P ./ggml-rpc-server -H 0.0.0.0 -p $RPC_PORT -t \$T $RPC_C\" > ~/exp/logs/rpc.log 2>&1 < /dev/null &
     sleep 1; pgrep -x ggml-rpc-server >/dev/null || { echo 'rpc-server 启动失败'; tail -3 ~/exp/logs/rpc.log; }"
 done
 

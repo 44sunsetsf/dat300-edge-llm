@@ -1,0 +1,43 @@
+mode=tp sm=tensor nn=4 build=opt reps=1 rpc_t=3 rpc_t_head=3 env='' extra='' netem_ms=0
+节点：finn@10.77.0.2 pi@10.77.0.3 rex@10.77.0.4 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m /Users/zhangyunfan/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.2:50052,10.77.0.3:50052,10.77.0.4:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+CPU 占用 us%（按节点顺序）：6/2/8/2
+温度/降频：37.4C,0x0 36.5C,0x0 38.9C,0x0 55.0C,0x0 
+mode=tp sm=tensor nn=4 build=opt reps=1 rpc_t=3 rpc_t_head=2 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 3 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |          7.19 ± 0.00 |
+| llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 |       3 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          2.99 ± 0.00 |
+CPU 占用 us%（按节点顺序）：26/17/17/17
+温度/降频：42.3C,0x0 40.4C,0x0 40.9C,0x0 61.8C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=3 rpc_t_head=2 env= extra= netem_ms=0 prefill=7.19 decode=2.99 head_kb=- cpu=26/17/17/17
+每台 Pi：平均每个 decode token 的时间拆分（单位 ms；decode = 每次 allreduce 字节数最小的那些段）
+
+节点                     token数      总时间       计算       同步     其中网络     本地加     收发数据     空等主控     同步次数
+finn_10.77.0.2             30    337.8    190.4    115.5    113.9     0.3      0.7     28.2       56
+pi_10.77.0.3               30    336.8    203.3    108.1    106.5     0.3      0.9     22.4       56
+pi_10.77.0.5               30    337.8    191.7    114.5    112.8     0.3      0.8     27.7       56
+rex_10.77.0.4              30    337.2    290.2     22.5     20.7     0.4      1.7     20.4       56
+
+说明：
+- 总时间 ≈ 计算 + 同步 + 收发数据 + 空等主控。1000 ÷ 总时间 ≈ decode 速度（tok/s）。
+- 同步里的"网络"包括等对方 Pi 算完：如果某台 Pi 的网络时间明显比别人短，说明大家都在等它（它最慢）。
+- 空等主控：rpc-server 没事做、在等主控发命令的时间（主控在采样、取 logits、调度）。
+明细已写到 /Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/trace/tp_4n_opt_X2_rexhead_t2_1014_161141/segments.csv 和 allreduce.csv。
+计时日志：logs/trace/tp_4n_opt_X2_rexhead_t2_1014_161141/
+已保存 logs/tp_4n_opt_X2_rexhead_t2_1014_161141.log
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='-p 512 -ub 128 -n 0' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer -p 512 -ub 128 -n 0
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 546 51 16 13 16 13 17 519 
+## 速度（-p 32 -n 30 -r 1）

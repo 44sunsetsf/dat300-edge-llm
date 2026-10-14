@@ -1,0 +1,10 @@
+mode=pp sm=layer nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 pi@10.77.0.5
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.5:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm layer  -ub 2
+## 多请求吞吐（llama-batched-bench -npp 32 -ntg 16 -npl 8）
+|    PP |     TG |    B |   N_KV |   T_PP s | S_PP t/s |   T_TG s | S_TG t/s |      T s |    S t/s |
+|-------|--------|------|--------|----------|----------|----------|----------|----------|----------|
+|    32 |     16 |    8 |    384 |   53.979 |     4.74 |   30.652 |     4.18 |   84.631 |     4.54 |
+温度/降频：46.7C,0x0 41.3C,0x0 42.8C,0x0 72.0C,0x80000 
+BATCHED_DONE mode=pp nn=4 args=-npp,32,-ntg,16,-npl,8 ub=2

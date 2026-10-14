@@ -6,26 +6,32 @@ DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，
 - **下次活动照着做**：[`docs/操作指南.md`](docs/操作指南.md)（从接线到出结果，一步一步写好了）
 - **不用脚本、自己调参**：[`docs/手动使用改进版.md`](docs/手动使用改进版.md)（rpc-server 怎么起、主控上怎么跑、能调哪些参数）
 - **每一步的耗时日志**：[`docs/计时日志.md`](docs/计时日志.md)（每台 Pi 记录每条命令的耗时，自动拆分每个 token 的时间）
-- **研究结果**：[`docs/RESULTS.md`](docs/RESULTS.md)
+- **研究结果**：[`docs/实验报告_1014.md`](docs/实验报告_1014.md)（交换机 + 4 台 Pi 实测，最新）、[`docs/RESULTS.md`](docs/RESULTS.md)（之前 2 台 Pi + Mac 模拟）
+- **网络**：[`docs/网络配置.md`](docs/网络配置.md)
 - **改进版 llama.cpp**：fork [`44sunsetsf/llama.cpp`](https://github.com/44sunsetsf/llama.cpp) 的 `dat300` 分支，
   预编译包在 [Releases](https://github.com/44sunsetsf/llama.cpp/releases)
   - 改进版的 commit 写在 [`LLAMA_COMMIT`](LLAMA_COMMIT)；
   - 对照用的原版写在 [`LLAMA_STOCK_COMMIT`](LLAMA_STOCK_COMMIT)。
 
-## 目前的结论（2 台 Pi 实测 + Mac 上模拟 8 台）
+## 目前的结论（2026-10-14 交换机 + 4 台 Pi 实测，详见 [`docs/实验报告_1014.md`](docs/实验报告_1014.md)）
 
-1. 单台 Pi 的 decode 受**内存带宽**限制（1.85 tok/s）；网络带宽不是瓶颈。
-2. TP 的另一个瓶颈是**同步次数 × 每次的延迟**，每个 token 同步 56 次。原版 llama.cpp 只有在恰好 2 台时才让 Pi 之间直接交换数据，4 台和 8 台时全部经过主控中转。模拟 8 台时，每个 token 有 4164 次串行网络延迟。
-3. 2 台时计算占约 90%，其中**输出层就占 27%**：这个模型的输出层是 Q6_K，比其他层的 Q4_0 更大、也更慢。
-4. 我们的优化：
-   - **改代码**（fork 的 `dat300` 分支）：任意 2/4/8/16 台之间直接 allreduce，小数据直接在内存里相加，修复了 8 台初始化可能卡死的问题。模拟 8 台时串行延迟次数少 19 倍；可选的 all-gather 算法再少 4 倍，待真机验证。
-   - **调参数**：decode 时 rpc-server 用 `-t 3`，2 台 TP 从 2.31 提到 2.93 tok/s。
-   - **快速模型**（可选）：输出层改成 Q4_0，再快 9%（2.93 → 3.19），困惑度只差 0.6%。
-5. PP 单个请求永远不比单台快，它的用处是装下单台装不下的大模型。
+| 4 台 Pi | prefill | decode (tok/s) |
+|---|---|---|
+| 单机 | 4.14 | 1.84 |
+| 原版 llama.cpp TP | 5.77 | 1.03 |
+| **改进版 TP + untied 模型 + 4 线程** | **12.57** | **5.04** |
+| PP（任何配置的单请求） | ≈4.1 | ≈1.85 |
+
+1. **TP 瓶颈①：原版 4 台以上同步都经过主控中转** → 改 llama.cpp 让 Pi 之间直接 allreduce：1.03 → 2.99。
+2. **TP 瓶颈②：输出层没有被切分**（Llama-3.2 的输出层和嵌入层共用矩阵，llama.cpp 让每台都完整算一遍，每台 80 ms/token）→ `scripts/untie_output.py` 补一个独立的 `output.weight`，结果完全不变：2.99 → 4.85，再改 4 线程 → 5.04。
+3. **PP**：单请求永远和单机一样快（原理决定）。切块流水线 prefill +12%，多请求 + 小块流水线吞吐 +29%（唯一超过单机的 PP 配置）。在 Pi 集群上 TP 全面优于 PP。
+4. **网络**：交换机没开 DHCP 导致 Pi 每 45 秒掉线一次 → 交换机 DHCP + 按 MAC 绑定 + Pi 固定 IP（[`docs/网络配置.md`](docs/网络配置.md)）。
+5. **异构**：RK3588（LubanCat-5）用 A76 编译、绑大核后单机 decode 12.3，比 4 台 Pi 集群还快；和 Pi 混用时必须用 `-ts` 按速度分配（TP 2 台 3.24 → 7.00）。
+6. 在交换机上，"每 token 同步 56 次"的延迟不是瓶颈（ag 算法把轮数减半也没变快）。
 
 ## 最快上手
 
-三种角色：**笔记本**（所有命令都在这里敲）、**主控 Pi**（只有它需要模型文件，建议用 rex，原模型和快速模型都在上面）、**worker Pi**（只需要程序，`setup_pi.sh` 会装好）。详见 [`docs/操作指南.md`](docs/操作指南.md)。
+三种角色：**笔记本**（所有命令都在这里敲）、**主控 Pi**（只有它需要模型文件，建议用 rex，模型已经在上面）、**worker Pi**（只需要程序，`setup_pi.sh` 会装好）。详见 [`docs/操作指南.md`](docs/操作指南.md)。
 
 以下命令都【在笔记本上】、本仓库目录下运行：
 
@@ -56,7 +62,8 @@ python3 scripts/summarize.py                     # 结果表
 | `scripts/exp/mac_sim.sh` | 在 Mac 上用 Docker 模拟 N 台集群 |
 | `scripts/summarize.py` | 把 `logs/` 里的结果汇总成表 |
 | `scripts/analyze_trace.py` | 分析计时日志：每个 token 的计算 / 同步 / 等待各占多少 |
-| `scripts/make_fast_model.sh` | 生成快速模型（输出层改成 Q4_0，+9%） |
+| `scripts/untie_output.py` | 给模型补独立的输出层，TP 时输出层按台数切分（4 台 +62%，结果不变）。`setup_pi.sh --model` 自动调用 |
+| `scripts/make_fast_model.sh` | 生成快速模型（输出层改成 Q4_0，可选） |
 | `scripts/build_release.sh` | 改了 llama.cpp 代码后，在 Mac 上用 Docker 重新编译并发布（约 1 分钟） |
 | `docs/` | 操作指南、研究结果、进度 |
 | `logs/` | 所有原始日志 |

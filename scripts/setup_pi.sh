@@ -64,12 +64,21 @@ for h in $HOSTS; do ( setup_one "$h" 2>&1 | sed "s/^/[$h] /" ) & pids+=($!); don
 for p in "${pids[@]}"; do wait "$p" || true; done
 
 if [ $WANT_MODEL = 1 ]; then
+  ORIG_LOCAL="$REPO_DIR/../models/$(basename "$MODEL_ORIG")"
+  if [ "$(basename "$MODEL")" = "$(basename "$MODEL_ORIG")" ]; then WANT_SIZE=$MODEL_SIZE; WANT_SHA=$MODEL_SHA256
+  else WANT_SIZE=$UNTIED_SIZE; WANT_SHA=$UNTIED_SHA256; fi
   LOCAL="$REPO_DIR/../models/$(basename "$MODEL")"
-  if [ "$(ssh_pi "$HEAD" "stat -c %s $MODEL 2>/dev/null" || true)" != "$MODEL_SIZE" ]; then
+  if [ "$(ssh_pi "$HEAD" "stat -c %s $MODEL 2>/dev/null" || true)" != "$WANT_SIZE" ]; then
     ssh_pi "$HEAD" "mkdir -p \$(dirname $MODEL)"
-    if [ -f "$LOCAL" ]; then echo "[$HEAD] 从笔记本复制模型（约 1.9 GB）"; scp -q "$LOCAL" "$HEAD:${MODEL#\~/}"
-    else echo "[$HEAD] 从 Hugging Face 下载模型"; ssh_pi "$HEAD" "curl -fSL -C - --retry 5 -o $MODEL '$MODEL_URL'"; fi
+    if [ ! -f "$LOCAL" ] && [ "$LOCAL" != "$ORIG_LOCAL" ]; then
+      # untied 模型在笔记本上由原模型生成（约 15 秒），需要 numpy 和 gguf（pip3 install numpy gguf，或者有 ../llama.cpp-dat300 源码）
+      if [ ! -f "$ORIG_LOCAL" ]; then echo "笔记本上从 Hugging Face 下载原模型（1.9 GB）"; mkdir -p "$(dirname "$ORIG_LOCAL")"
+        curl -fSL -C - --retry 5 -o "$ORIG_LOCAL" "$MODEL_URL"; fi
+      python3 "$REPO_DIR/scripts/untie_output.py" "$ORIG_LOCAL" "$LOCAL" || { echo "生成 untied 模型失败：先 pip3 install numpy gguf"; exit 1; }
+    fi
+    if [ -f "$LOCAL" ]; then echo "[$HEAD] 从笔记本复制模型 $(basename "$LOCAL")（约 2 GB，1–2 分钟）"; scp -q "$LOCAL" "$HEAD:${MODEL#\~/}"
+    else echo "[$HEAD] 从 Hugging Face 下载原模型"; ssh_pi "$HEAD" "curl -fSL -C - --retry 5 -o $MODEL '$MODEL_URL'"; fi
   fi
   echo "[$HEAD] 校验模型（约 30 秒）"
-  ssh_pi "$HEAD" "f=$MODEL; echo '$MODEL_SHA256  '\$f | sha256sum -c --quiet && echo '模型校验通过'" | sed "s/^/[$HEAD] /"
+  ssh_pi "$HEAD" "f=$MODEL; echo '$WANT_SHA  '\$f | sha256sum -c --quiet && echo '模型校验通过'" | sed "s/^/[$HEAD] /"
 fi

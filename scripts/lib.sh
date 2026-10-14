@@ -19,7 +19,12 @@ esac
 MODEL_URL=https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_0.gguf
 MODEL_SIZE=1921909280
 MODEL_SHA256=4d491003bf6b470e4d04233824c5c939b76d6c81974ba17a3ff207343e1d8e85
-: "${MODEL:=~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf}"   # 只有 HEAD 需要
+MODEL_ORIG=~/exp/models/Llama-3.2-3B-Instruct-Q4_0.gguf     # 原模型（输出层和嵌入层共用一个矩阵）
+# 默认用 untied 模型：补了独立的 output.weight（scripts/untie_output.py 生成），计算结果和原模型完全一样，
+# 但 TP 时输出层能按台数切分（4 台 decode 2.99 → 4.85 tok/s）。只有 HEAD 需要模型文件。
+UNTIED_SIZE=2245114464
+UNTIED_SHA256=7fe7d717ef7da9e98839ad472d0cd731206894905c7964a3574c9a2227f81855
+: "${MODEL:=~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf}"
 
 LOG_DIR="$REPO_DIR/logs"
 ALL_PIS="$HEAD $WORKERS"
