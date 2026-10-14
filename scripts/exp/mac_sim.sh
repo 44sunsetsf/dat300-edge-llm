@@ -2,13 +2,14 @@
 # Simulate an N-node cluster on the Mac with Docker containers (one rpc-server per container + a head container).
 # Measures, for PP and TP, decode tok/s with 0 and D ms of added one-way delay (tc netem on every container),
 # and per-token bytes on every container. slope = (t_D - t_0)/D = serial network hops per generated token.
-# Usage: scripts/exp/mac_sim.sh MODEL.gguf "1 2 4 8" [D_ms]      env: BIN_DIR (linux arm64 bins), NGEN (default 16)
+# Usage: scripts/exp/mac_sim.sh MODEL.gguf "1 2 4 8" [D_ms]      env: BIN_DIR (linux arm64 bins), NGEN (default 16),
+#        HEAD_ENV="VAR=value" (passed to llama-bench, e.g. GGML_RPC_COMM_ALGO=ag)
 set -euo pipefail
 MODEL=$(cd "$(dirname "$1")" && pwd)/$(basename "$1"); NS=${2:-"2 4 8"}; D=${3:-2}; NGEN=${NGEN:-16}
 REPO_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 BIN_DIR=${BIN_DIR:-$REPO_DIR/../llama.cpp-dat300/build-linux-arm64/bin}
 OUT="$REPO_DIR/logs/mac_sim_$(basename "$MODEL" .gguf)_$(date +%m%d_%H%M%S).log"
-NET=dat300sim; IMG=dat300-build
+NET=dat300sim; IMG=${IMG:-dat300-build-trixie}   # 和编译程序用的系统一致（Debian 13）
 run() { docker run -d --rm --platform linux/arm64 --cap-add NET_ADMIN --network $NET -v "$BIN_DIR":/bin2:ro -v "$MODEL":/model.gguf:ro --name "$@" >/dev/null; }
 cleanup() { docker rm -f $(docker ps -aq --filter name=dsim-) >/dev/null 2>&1 || true; }
 trap cleanup EXIT
@@ -16,11 +17,11 @@ docker network inspect $NET >/dev/null 2>&1 || docker network create $NET >/dev/
 netem() { for c in $(docker ps --format '{{.Names}}' --filter name=dsim-); do
   docker exec $c tc qdisc replace dev eth0 root netem delay ${1}ms 2>/dev/null || docker exec $c tc qdisc del dev eth0 root 2>/dev/null || true; done; }
 bytes() { for c in $(docker ps --format '{{.Names}}' --filter name=dsim- | sort); do docker exec $c awk '/eth0/{s+=$2+$10}END{print s}' /proc/net/dev; done | paste -sd+ - | bc; }
-tg() { docker exec dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $NGEN -o jsonl 2>/dev/null |
+tg() { docker exec ${HEAD_ENV:+-e "$HEAD_ENV"} dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $NGEN -o jsonl 2>/dev/null |
   python3 -c 'import sys,json; print([json.loads(l) for l in sys.stdin if l.startswith("{")][-1]["avg_ts"])'; }
 kb_tok() {   # marginal bytes per generated token: (bytes of -n 3*NGEN run - bytes of -n NGEN run) / (2*NGEN)
-  local b0 b1 b2; b0=$(bytes); docker exec dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $NGEN -r 1 >/dev/null 2>&1
-  b1=$(bytes); docker exec dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $((3*NGEN)) -r 1 >/dev/null 2>&1; b2=$(bytes)
+  local b0 b1 b2; b0=$(bytes); docker exec ${HEAD_ENV:+-e "$HEAD_ENV"} dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $NGEN -r 1 >/dev/null 2>&1
+  b1=$(bytes); docker exec ${HEAD_ENV:+-e "$HEAD_ENV"} dsim-head /bin2/llama-bench -m /model.gguf $1 -p 0 -n $((3*NGEN)) -r 1 >/dev/null 2>&1; b2=$(bytes)
   echo $(( ((b2-b1)-(b1-b0)) / (2*NGEN) / 1000 )); }
 {
 echo "model=$(basename "$MODEL") N=($NS) netem=${D}ms ngen=$NGEN host=$(sysctl -n hw.ncpu)cpu"

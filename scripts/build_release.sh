@@ -6,7 +6,7 @@
 # 用法：scripts/build_release.sh [--publish] [COMMIT]     （COMMIT 默认是 LLAMA_COMMIT 里的改进版）
 #   需要在本仓库旁边 clone fork：git clone -b dat300 https://github.com/44sunsetsf/llama.cpp ../llama.cpp-dat300
 #   （或用 LLAMA_SRC=路径 指定）。其他 commit 会在 git worktree ../llama.cpp-dat300-<短哈希> 里编译。
-# 产物：dist/llama-<短哈希>-linux-arm64.tar.gz，解压后是 build/bin/{llama-bench,llama-cli,llama-server,llama-perplexity,ggml-rpc-server,VERSION}
+# 产物：dist/llama-<短哈希>-linux-arm64.tar.gz，解压后是 build/bin/{llama-bench,llama-cli,llama-server,llama-perplexity,llama-quantize,ggml-rpc-server,VERSION}
 # M 系列 Mac 上约 1 分钟。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,7 +21,7 @@ DIRTY=$(git -C "$SRC" status --porcelain --untracked-files=no | head -1)
 DISTRO=${DISTRO:-trixie}; SUFFIX=""; [ "$DISTRO" = trixie ] || SUFFIX="-$DISTRO"
 NAME=llama-$SHORT${DIRTY:+-dirty}-linux-arm64$SUFFIX
 IMG=dat300-build-$DISTRO
-TARGETS="llama-bench llama-cli llama-server llama-perplexity ggml-rpc-server"
+TARGETS="llama-bench llama-cli llama-server llama-perplexity llama-quantize ggml-rpc-server"
 docker build -q --platform linux/arm64 --build-arg BASE=debian:$DISTRO -t $IMG docker >/dev/null
 
 # 静态链接 llama/ggml 库（不需要 LD_LIBRARY_PATH）；-mcpu=cortex-a72 和 Pi 本机编译的指令集一致

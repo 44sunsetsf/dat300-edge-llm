@@ -5,7 +5,7 @@
 # 环境变量（都可选）：
 #   NN=4           用几台：HEAD + 前 NN-1 个 WORKERS（默认全部）。single 模式固定 1 台
 #   BUILD=stock    用原版（默认 opt = 我们的改进版）
-#   RPC_T=3        rpc-server 的线程数（默认 4）；RPC_T_HEAD=3 只改 HEAD 上那个 rpc-server
+#   RPC_T=3        rpc-server 的线程数（默认 4；single 模式下是单机的计算线程数）；RPC_T_HEAD=3 只改 HEAD 上那个 rpc-server
 #   ENV="X=1 ..."  给 llama-bench 加环境变量，例如 GGML_RPC_NO_COMM=1（关闭节点间直接交换）
 #   EXTRA="..."    给 llama-bench 加参数，例如 "-ts 3/2"（不均匀切分）
 #   P=32 N=30      prompt 长度 / 生成 token 数
@@ -13,7 +13,7 @@
 #   TAG=名字       加在日志文件名里；NETEM_MS=2 只是记录用（延迟要另外用 scripts/exp/netem.sh 加）
 #   TRACE=1        开启计时日志：每台 rpc-server 记录每条命令的耗时，跑完取回到 logs/trace/<本次日志名>/，
 #                  并自动运行 scripts/analyze_trace.py 拆分每个 token 的时间（会自动跳过流量测量）
-#   RPC_CACHE=0    关掉 rpc-server 的本地权重缓存（默认开，缓存在每台 Pi 的 ~/.cache/llama.cpp/rpc）
+#   RPC_CACHE=1    开启 rpc-server 的本地权重缓存（加载快一倍；缓存在 ~/.cache/llama.cpp/rpc，台数一变会新增一份，注意磁盘）
 #   TIMEOUT=900    每次 llama-bench 的超时秒数，卡住就放弃这组
 # 日志：logs/<模式>_<台数>n_<build>[_TAG]_<时间>.log，最后一行是 RESULT（scripts/summarize.py 读它）
 set -euo pipefail
@@ -31,11 +31,11 @@ mkdir -p "$LOG_DIR"
 
 RPC=""; DEV=""; i=0
 for s in $SERVERS; do RPC+="${RPC:+,}$(ip_of $s):$RPC_PORT"; DEV+="${DEV:+/}RPC$i"; i=$((i+1)); done
-ARGS="-m $MODEL -t 4"
+ARGS="-m $MODEL -t ${RPC_T:-4}"   # single 模式下就是计算线程数；多台时主控不参与计算，这个值无影响
 [ $MODE != single ] && ARGS+=" --rpc $RPC -dev $DEV -sm $SM"
 ARGS+=" ${EXTRA:-}"
 
-RPC_C=""; [ "${RPC_CACHE:-1}" = 1 ] && RPC_C="-c"
+RPC_C=""; [ "${RPC_CACHE:-0}" = 1 ] && RPC_C="-c"   # -c：本地缓存权重，第二次起加载快一倍；但台数一变就会新增一份缓存，容易占满磁盘，所以默认关
 TRACE_ENV=""; [ "${TRACE:-0}" = 1 ] && { TRACE_ENV="GGML_RPC_TRACE=\$HOME/exp/logs/trace.csv"; TRAFFIC=0; }   # -c：worker 本地缓存权重，第二次起加载快一倍（不影响速度）
 # 清理残留进程，重新起 rpc-server（每组都用新进程，内存干净）
 for s in $NODES; do ssh_pi "$s" 'pkill -x ggml-rpc-server; pkill -x llama-bench; pkill -x vmstat; true'; done

@@ -1,0 +1,6 @@
+model=Llama-3.2-3B-Instruct-Q4_0.gguf N=(8 4) netem=2ms ngen=8 host=10cpu
+N mode tg_0ms(tok/s) tg_2ms(tok/s) ms/tok_0 ms/tok_D hops/token(slope) kB/token(sum over all containers, rx+tx)
+8 layer 7.67 5.43 130.4 184.3 27.0 1531
+8 tensor 6.76 1.56 147.9 642.6 247.4 35569
+4 layer 14.72 10.32 67.9 96.9 14.5 1291
+4 tensor 13.15 2.22 76.0 451.0 187.5 12756
