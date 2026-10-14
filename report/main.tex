@@ -1,0 +1,704 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Packages ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[lining]{gelasio}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{hyperref}
+\usepackage{amssymb}
+\usepackage{pdfpages}
+\usepackage{setspace}
+\usepackage{xcolor}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\LARGE\bfseries Distributed LLM Inference on the Edge:\\[0.4em]
+   Parallelism, Network and Bottlenecks\\[0.4em]
+   on a Raspberry Pi Cluster\par}
+  \vspace{2cm}
+  {\large Project Report\par}
+  {\large Supervisors: Yixing Zhang and Romaric Duvignau\par}
+  {\large Group: 7\par}
+  \vspace{1.5cm}
+  {\large Yuzhou Zhang\\ Yunfan Zhang\\ Shuo Zhang\\ Wenqi Zhao\par}
+  \vfill
+  {\large Chalmers University of Technology\\
+   Gothenburg, Sweden\par}
+  \vspace{0.5cm}
+  {\large \today\par}
+\end{titlepage}
+
+% ---------- Abstract ----------
+\begin{abstract}
+Running large language models (LLMs) on edge devices avoids the privacy and cost problems of cloud inference, but a single low-cost board has too little memory and compute to serve a useful model quickly. We study distributed LLM inference on a physical cluster of Raspberry Pi~4/400 boards connected through a Gigabit Ethernet switch in a star topology, using Llama-3.2-3B-Instruct (Q4\_0) as the workload. We first reproduce a tensor-parallel (TP) baseline with Distributed Llama~\cite{distributedllama}, which reaches 1.97, 3.55 and 5.81 tokens/s on 1, 2 and 4 nodes. We then use the RPC backend of \texttt{llama.cpp}~\cite{llamacpp} to compare pipeline parallelism (PP) and TP on the same hardware, instrument every RPC command with a per-node timing log, and use the logs to locate the bottlenecks. Stock \texttt{llama.cpp} TP becomes \emph{slower} than a single node at 4 nodes (1.03 vs.\ 1.84 tokens/s) because every allreduce is relayed through the head node, which sends 49.9~MB per token. We fix this with a direct peer-to-peer recursive-doubling allreduce (2.99 tokens/s), and find a second, previously unreported bottleneck: Llama-3.2 ties its output projection to the input embedding, so \texttt{llama.cpp} replicates the 323~MB output layer on every node and each node spends 80--85~ms per token on it regardless of the cluster size. Storing an explicit, identical copy of the output matrix lets it be split across nodes without changing a single output value (identical perplexity), raising 4-node decode to 4.85 tokens/s, and 5.04 tokens/s with four threads per node: a 4.9$\times$ improvement over stock \texttt{llama.cpp} and 2.7$\times$ over a single board, with 3.0$\times$ faster prefill. PP never beats a single node for one request (1.84 tokens/s) since only one stage is active at a time; chunked pipelined prefill gains 12\% and pipelined multi-request decoding gains 29\%, but TP is better than PP on every metric we measured. Finally, we show that a heterogeneous RK3588 board is 6.7$\times$ faster than a Pi once compiled for its Cortex-A76 cores, and that mixing it with Pis requires a speed-proportional split (TP: 3.24 $\rightarrow$ 7.00 tokens/s). All code, scripts, logs and the modified \texttt{llama.cpp} are public.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+% =====================================================
+\section{Introduction}
+
+\subsection{Motivation: LLM Inference on Edge}
+
+Large language models (LLMs) have moved in a few years from research artifacts to components embedded in everyday applications, ranging from personal assistants to industrial automation agents, and in almost all current deployments, the model itself runs in a data center and is accessed by the client over the network. This cloud-centric design has two well-known problems: First, every user request leaves the device and is processed on infrastructure the user does not control, which raises privacy concerns whenever the input contains personal, medical, or otherwise sensitive information. Second, serving billions of requests from centralized GPU clusters is expensive, both financially for the provider and in terms of the latency and connectivity that the client depends on, without a network connection, it simply stops working.
+
+Edge inference, which means running the model directly on or near the user's own device, may solve both concerns, since data never has to leave the device, and the system keeps working without an internet connection, yet the difficulty is that the accuracy of an LLM correlates strongly with its parameter count, and the most capable open models require several to tens of gigabytes of memory and substantial compute even at reduced (quantized) precision, but most edge-devices such as smartphones, single-board computers typically offer a small fraction of that memory and no dedicated accelerator, a single such device can only run a small model, which trades away much of the accuracy that motivated using an LLM in the first place.
+
+A natural way to handle these two constraints is to distribute the model across several modest edge devices connected by a local network, so that their combined memory and compute approximate that of a single more powerful machine, as our project investigates exactly this option, whether a cluster of low-cost, widely available single-board computers (Raspberry Pi devices) connected through common Ethernet hardware can serve LLM inference at a useful throughput, and what limits its performance as more devices are added.
+
+\subsection{Overview of the Project}
+
+In this project we deploy and measure distributed LLM inference on a physical cluster of Raspberry Pi devices connected through a switch in a star topology. We first establish a baseline with the Distributed Llama framework~\cite{distributedllama} on 1, 2 and 4 nodes. Because Distributed Llama only implements tensor parallelism, we then move to the RPC backend of \texttt{llama.cpp}~\cite{llamacpp}, which supports both pipeline parallelism (\texttt{-sm layer}) and tensor parallelism (\texttt{-sm tensor}) on the same binaries, so that the two strategies can be compared under identical conditions. On top of it we (i) add a per-node timing log of every RPC command to decompose each generated token into compute, synchronization and idle time, (ii) use these logs to identify the bottlenecks, (iii) implement and evaluate optimizations in the code (a direct peer-to-peer allreduce), in the model file (an untied output layer) and in the configuration (threads, chunked pipelining, batching, weighted splits), and (iv) extend the study to a heterogeneous RK3588 board. Our contributions are summarized in Table~\ref{tab:summary} in Section~8.
+
+The rest of the report is organized as follows. Section~2 introduces the technical background needed to follow the rest of the report: Transformer inference, parallelism strategies, the frameworks we use, and quantization, together with the analytical models we rely on to reason about compute- and communication-bound behaviour. Section~3 reviews related work on distributed and edge LLM inference immediately after this background, so that the technical grounding and the positioning of our work relative to prior studies can be read together. Section~4 gives a detailed statement of the problem we address, together with the requirements and metrics that later define our evaluation criteria. Section~5 discusses the challenges specific to distributing LLM inference over resource-constrained edge devices and the design alternatives we considered. Section~6 presents the approach and methodology we follow. Section~7 describes the implementation of our experimental platform. Section~8 reports our results, distinguishing what has already been measured from what remains to be completed for the final report. Section~9 concludes with our current limitations, and directions for future work.
+
+% =====================================================
+\section{Background}
+
+\subsection{Transformer Inference} % : Prefill and Decode Phases
+
+Modern LLMs are based on the Transformer architecture~\cite{vaswani2017attention}, which uses repeated self-attention and feed-forward layers to process token sequences. Formally, for query, key and value matrices $Q, K, V \in \mathbb{R}^{n \times d_k}$ derived from the input sequence, self-attention is computed as
+\begin{equation}
+\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V
+\label{eq:attention}
+\end{equation}
+where $d_k$ is the per-head key dimension and the softmax is taken row-wise~\cite{vaswani2017attention}. Generating text from the decoder mainly has two different phases: the first one is the \emph{prefill} phase that processes the whole input prompt all at once (so $n$ in Eq.~\ref{eq:attention} equals the prompt length) and calculates the KV cache for all prompt tokens in parallel across all layers, so this part is compute-bound because it can run large matrix multiplications, and its time decides the \emph{time-to-first-token} (TTFT). The second one is the \emph{decode} phase, where the model generates only one token at a time by setting $n=1$ in Eq.~\ref{eq:attention} and reusing the cached keys and values from all previous steps, so each decode step reduces to a vector--matrix product rather than a matrix--matrix product.
+
+This distinction can be made more precise with a simple roofline argument: a computation's \emph{arithmetic intensity} is the ratio of floating-point operations to bytes moved from memory,
+\begin{equation}
+I = \frac{\text{FLOPs}}{\text{bytes moved}}
+\label{eq:intensity}
+\end{equation}
+During prefill, the same weight matrix is reused across all $n$ prompt tokens in one pass, so $I$ grows with $n$ and the operation tends to be compute-bound. During decode, $n=1$, so essentially every weight byte loaded from memory is used for a single multiply-add before being discarded, giving an arithmetic intensity close to the lower bound of the roofline model; the operation is therefore memory-bandwidth-bound rather than compute-bound, and the per-token time is dominated by how fast weights (and, for long contexts, the KV cache) can be streamed from RAM. This is exactly why decode throughput on CPU-only boards such as the Raspberry Pi is so sensitive to per-node memory bandwidth, and why, in a distributed setting, decode is also disproportionately sensitive to network latency: every one of the $n=1$ steps triggers a new round of communication, whereas in prefill the fixed communication cost is amortized over many tokens at once. This is exactly what we measure between the synchronization steps in Section~8.
+
+\subsection{Parallelism Strategies} % for Distributed Inference
+
+When a model is too large or too slow to run on a single machine, we can split its work across multiple devices using a few different strategies for so-called distributed inference.
+
+\subsubsection{Data Parallelism}
+In data parallelism, every device keeps a complete copy of the model and runs different inputs or requests independently, which helps improve the total throughput when there are many requests coming at the same time, but it cannot help when the model itself cannot fit into the memory of a single device, and it also cannot reduce the latency for a single request, so this method is not really suitable for our case because our main goal is to run a model that is already too big or too slow for one single Raspberry Pi.
+
+\subsubsection{Pipeline Parallelism}
+In pipeline parallelism, the layers of the model are divided into continuous blocks and each device only takes care of one block, so the activations of a token are passed step by step from the first device through the middle ones to the last device, which reduces the memory usage on each device based on how many devices we have, and it only needs one transfer between neighboring devices for each token to keep the communication volume quite low, but the main problem is that without batching, some devices have to stay idle and wait for their turn in the pipeline.
+
+\subsubsection{Tensor Parallelism}
+In tensor parallelism, the weight matrices inside each layer are split across different devices, for example by cutting attention heads or feed-forward layers by row or column, so each device only computes a part of the result and then merges it with other devices through an all-reduce or gather step once or multiple times per layer. For $N$ devices splitting a layer whose activations have hidden dimension $d_{model}$, and using $s$ bytes per element, a ring all-reduce over the resulting partial activations moves approximately
+\begin{equation}
+V_{\text{comm}} \approx 2\,\frac{N-1}{N}\, d_{model}\, s
+\label{eq:allreduce}
+\end{equation}
+bytes per synchronization point~\cite{shoeybi2019}, and this synchronization typically happens once after the attention block and once after the feed-forward block of every layer, so for a model with $L$ layers the total per-token communication volume scales roughly as $V_{total} \approx 2L\,V_{\text{comm}}$. Equation~\ref{eq:allreduce} shows two things that matter for our setting: first, $V_{comm}$ grows monotonically with $N$ even though each individual device holds a smaller weight shard, which is why adding nodes does not reduce network traffic; second, the factor $\frac{N-1}{N}$ approaches~1 quickly, so most of the traffic growth from 2 to 4 nodes in Section~8.3 is expected on theoretical grounds, not just an artifact of our implementation. All devices work on every layer together at the same time, which lowers per-token compute latency, but the layer-by-layer synchronization requirement causes much more frequent and larger communication compared to pipeline parallelism, whose communication volume does not depend on $N$ at all, only on the number of pipeline stage boundaries a token crosses.
+
+\subsection{Edge Inference Frameworks}
+
+\subsubsection{\texttt{llama.cpp}}
+\texttt{llama.cpp}~\cite{llamacpp} is an open-source inference engine written in C/C++ that focuses on CPU running, and it uses well-optimized quantized kernels to run the Transformer forward pass, so it does not need a GPU and can run directly on ARM and x86\_64 CPUs, which makes it a very natural choice for edge devices like Raspberry Pi, and it also has an RPC backend that can send part of the computation to other machines over the local network. Each remote machine runs a small \texttt{ggml-rpc-server} process that exposes its CPU as a compute device; the \emph{head} process loads the model, uploads every device's share of the weights at start-up, and then drives the computation by sending compute graphs and tensors over TCP. Two split modes are available: \texttt{-sm layer} assigns contiguous blocks of layers to the devices (pipeline parallelism), and \texttt{-sm tensor} splits the weight matrices inside every layer (tensor parallelism) and inserts an allreduce after the attention block and after the feed-forward block of each layer. For Llama-3.2-3B this gives 56 allreduce operations per generated token, each over a vector of $d_{model}=3072$ single-precision values (12~KB).
+
+\subsubsection{Distributed Llama}
+Distributed Llama~\cite{distributedllama} takes this idea further for clusters made of home or edge devices, and it uses a Root-Worker Architecture which includes \emph{root} node to load the model and tokenizer and send model slices to one or more \emph{worker} nodes over Ethernet, while the root node also calculates its own part so no device is left sitting idle, and this framework uses tensor parallelism where the root and worker nodes exchange partial activations after every layer to rebuild the full layer output before moving to the next layer, following the all-reduce pattern of Eq.~\ref{eq:allreduce}, which is exactly the per-token \texttt{Sync} step and the \texttt{Sent}/\texttt{Recv} network traffic we show in Section~8.2--8.3, but the framework has two architectural limits that directly decide our experiment setups, where the number of nodes must be a power of two like 1, 2, 4, 8 and so on, and it is also limited by the number of key-value attention heads in the model, which is why our baseline uses 1, 2, and 4 nodes, and going bigger would need either a larger node count that follows this rule or a model with more KV heads.
+
+\subsection{Quantization}
+
+By using Quantization, we can lower the numerical precision of model weights and sometimes activations, for memory-constrained devices usually changing 16-bit or 32-bit floats into 8-bit or 4-bit values. For a model with $P$ parameters quantized to $b$ bits per weight, the resulting memory footprint is approximately
+\begin{equation}
+M \approx \frac{P \cdot b}{8} \  \text{bytes}
+\label{eq:quant-memory}
+\end{equation}
+before accounting for small per-block scale-factor overheads that quantization schemes such as Q4\_0 add on top of the raw bit width. This directly cuts down the memory size roughly linearly in $b$ and saves memory bandwidth when loading weights during inference (recall from Eq.~\ref{eq:intensity} that decode is bandwidth-bound, so halving $b$ roughly halves the bytes streamed per token), while only causing a very small and acceptable drop in generation quality. Llama-3.2-3B-Instruct has $P \approx 3.2 \times 10^{9}$ parameters, so Eq.~\ref{eq:quant-memory} with $b=4$ bits (Q4\_0) predicts $M \approx 1.6$~GB, which is close to the roughly 1.8~GB we observe once per-block scale factors and metadata are included; this still fits inside the 4~GB RAM of one Raspberry Pi node even before splitting across the cluster, but the larger Qwen-3-8B model ($P \approx 8 \times 10^{9}$) would need $M \approx 4$~GB by the same formula, in practice taking about 4--5~GB after Q4 quantization, which is the exact reason why we need to distribute it across multiple nodes.
+
+% =====================================================
+\section{Related Work}
+
+\subsection{Network Traffic Characteristics of Distributed Edge Inference}
+Buschmann et al.~\cite{buschmann2025} look into the network traffic generated by distributed LLM inference across edge devices to see how data patterns change with different parallel models and network setups. Their measurements characterize per-token traffic as a function of partitioning strategy and message size rather than treating throughput as the only outcome of interest, which mirrors the per-token \texttt{Sent}/\texttt{Recv} breakdown we use in Section~8.3 and gives us an external reference point for whether the growth predicted by Eq.~\ref{eq:allreduce} is actually realized on physical hardware. Their work is closely related to our RQ2 and RQ3 because they also treat network traffic as a primary metric rather than just focusing on throughput, but our study is different because we record network traffic together with sync latency and decode speed directly on real Raspberry Pi hardware, which lets us connect traffic growth directly to our sub-linear speedup in Section~8.2--8.3 instead of just studying network traffic alone.
+
+\subsection{Partitioning and Quantization on Heterogeneous Clusters}
+Zhao et al.~\cite{zhao2024} introduce LLM-PQ to run LLMs on heterogeneous setups using phase-aware partitioning and adaptive quantization, where each device is assigned a shard size and a bit width chosen so that the predicted per-device compute time under a cost model is balanced across the cluster, rather than splitting layers or tensors evenly as Distributed Llama does by default (Section~2.3.2); this is conceptually the same load-balancing goal behind the uneven-split optimization we plan for RQ4 in Section~6.2, except that we intend to calibrate the split directly from measured per-node \texttt{Pred} times (Section~3.3) rather than from an offline cost model. Zhang et al.~\cite{zhang2024edgeshard} build EdgeShard around a similar idea, using dynamic programming over profiled per-device latency and bandwidth to decide both the layer partition and the pipeline schedule, which shows that the partitioning problem in our setting can be posed as a constrained optimization over the same quantities we log (\texttt{Pred}, \texttt{Sync}, bytes sent/received) rather than solved purely by trial and error. Both works are directly relevant to our planned optimizations in Section~6.2 and RQ4, because our goal of better model splitting shares the same basic idea of balancing workloads across boards, although we focus on homogeneous Raspberry Pi clusters with direct hardware tests instead of complex scheduling algorithms for heterogeneous nodes.
+
+\subsection{Model Parallelism in Large-Scale Language Models}
+Shoeybi et al.~\cite{shoeybi2019} present Megatron-LM as a major milestone for using tensor parallelism to train huge language models across GPUs with NVLink, splitting attention heads and feed-forward matrices by row and column so that only two all-reduce operations of the form in Eq.~\ref{eq:allreduce} are needed per transformer layer; this established the basic synchronization design that both Distributed Llama and our experiments use. Their design implicitly assumes an Amdahl's-law-style scaling picture in which the fraction of time spent on communication, $p$, is small enough on high-bandwidth NVLink interconnects that the overall speedup with $N$ devices approaches
+\begin{equation}
+S(N) = \frac{1}{(1-p) + \dfrac{p}{N}}
+\label{eq:amdahl}
+\end{equation}
+close to linear. Their work runs in data-center GPU clusters with interconnect bandwidth several orders of magnitude higher than our switched Gigabit Ethernet, so the communication fraction $p$ that Eq.~\ref{eq:amdahl} treats as negligible in their setting is, on our Raspberry Pi cluster, large enough to be the main term explaining the sub-linear speedups of 1.81$\times$ and 2.95$\times$ we measure in Section~8.2. Comparing our measured sync overhead in Section~8.3 with their assumptions shows that edge setups are far more sensitive to network communication costs, and that Eq.~\ref{eq:amdahl} should really be extended with an $N$-dependent overhead term, $S(N) = \big[(1-p) + p/N + o(N)\big]^{-1}$, where $o(N)$ grows with the traffic predicted by Eq.~\ref{eq:allreduce}, to fit our data.
+
+Besides network and model splitting, other works focus on reducing the actual computation during inference. Speculative decoding~\cite{leviathan2023fast} uses a small, cheap draft model to propose $\gamma$ candidate tokens, which the large target model then verifies in a single parallel forward pass; a proposed token is accepted with probability $\min\!\left(1, \frac{p_{\text{target}}(x)}{p_{\text{draft}}(x)}\right)$ under the target and draft distributions, and the expected number of tokens produced per target-model call is $\frac{1-\alpha^{\gamma+1}}{1-\alpha}$ for an average acceptance rate $\alpha$, so higher agreement between the two models directly multiplies decode throughput without changing the output distribution. KV cache methods~\cite{li2024surveykv} instead attack the memory-bandwidth bottleneck identified in Eq.~\ref{eq:intensity} directly, since the KV cache for a sequence of length $n$ occupies $2 \cdot n \cdot L \cdot d_{model} \cdot b/8$ bytes (factor 2 for keys and values, $L$ layers, $b$-bit storage), so techniques that prune, quantize, or evict cache entries reduce exactly the bytes that must be streamed per decode step in Section~2.1. Both directions are largely orthogonal to our communication optimizations in Section~6.2, so we treat them as interesting directions for future work in Section~9.3.
+
+\subsection{Positioning of This Work}
+Compared to these existing papers, our main contribution comes from direct empirical testing, because while simulation and GPU papers explain theoretical trade-offs, we provide real physical measurements on a cheap Raspberry Pi cluster that normal users or small labs can actually build, and our baseline results in Section~8.2--8.3 clearly show sub-linear scaling caused by growing sync times and network traffic, consistent with the extended Amdahl-style model in Eq.~\ref{eq:amdahl}, which is a concrete finding that has not been directly reported for this exact setup in prior work.
+
+% =====================================================
+\section{Questions, Requirements and Metrics}
+
+\subsection{Research Questions}
+
+Based on the motivation in Section~1 and the background and related work in Sections~2--3, the core question we want to answer is: \emph{How does distributed LLM inference actually run on a cheap cluster of real Raspberry Pi boards, and what becomes the main bottleneck when we add more nodes?} And we break this down into four specific research questions:
+
+\begin{itemize}
+\item \textbf{RQ1.} How do decode throughput and time to first token scale when we use more Raspberry Pi nodes under the same model and quantization setting?
+\item \textbf{RQ2.} How do pipeline parallelism and tensor parallelism compare in terms of latency, throughput, and network traffic on these low-cost devices?
+\item \textbf{RQ3.} What is the main bottleneck here -- network bandwidth, latency, per-node memory bandwidth, or device count and heterogeneity -- and how does it change when the cluster grows larger?
+\item \textbf{RQ4.} Can simple and low-effort optimizations, like better model splitting or reducing data transfer during sync, clearly improve throughput without hurting output quality too much?
+\end{itemize}
+
+\subsection{System Requirements}
+
+To answer these questions, our test setup needs to meet several basic requirements, where (R1) it has to support models that are too large for a single Raspberry Pi by spreading both memory and computation evenly across all available boards, and (R2) it should only use cheap commodity hardware like Raspberry Pi boards hooked up with a standard unmanaged Ethernet switch without any GPU or special high-speed network, while (R3) it must support any power-of-two total number of nodes without needing to manually re-slice the model every time, and (R4) it needs to record enough timing and network metrics for every generated token, such as compute time, sync time, and bytes transferred, so that we can clearly see what makes up the total latency, and finally (R5) the whole testing setup must be reproducible so we can run the same test again and get consistent results across different runs.
+
+\subsection{Metrics of Experiment}
+
+Following these requirements, we track several key metrics that we use across all evaluations in Section~8:
+
+\begin{itemize}
+\item \textbf{Time-to-first-token (TTFT)}: The total elapsed time from taking in a prompt to getting the very first token, which is mainly decided by the prefill phase discussed in Section~2.1,
+\item \textbf{Decode throughput}: The average number of tokens generated per second during decoding, along with its inverse value which is the per-token latency in milliseconds,
+\item \textbf{Network traffic}: How many kilobytes each node sends and receives for each generated token to show the actual communication cost,
+\item \textbf{Synchronization time}: How much of the per-token latency is spent on waiting or doing inter-node sync instead of local compute, which corresponds to \texttt{Pred} and \texttt{Sync} in our logs,
+\item \textbf{CPU and memory utilization}: The CPU load and RAM usage on each node during inference, so we can tell if a node is limited by compute, memory bandwidth, or just waiting on network packets, which is discussed in Section~8.5.
+\end{itemize}
+
+
+% =====================================================
+\section{Challenges and Possible Approaches}
+
+\subsection{Challenges of Edge Distributed Inference}
+
+\subsubsection{Memory and Compute Constraints}
+Each Raspberry Pi board in our cluster only has 4~GB of RAM and a basic ARM CPU without any dedicated matrix hardware, which directly limits how large a model slice each node can hold and how much compute power it can provide per token, so even when a model is partitioned well, the overall speed is still capped by the slowest node unless the workload is balanced very evenly across all devices.
+
+\subsubsection{Network Communication Overhead}
+Splitting the workload introduces extra communication overhead that single-device setups do not have, and as shown by the Q4\_0-quantized 3B baseline in Section~8.3, every extra node brings tens of kilobytes of traffic and tens of milliseconds of sync time for every single token, because the decode step generates tokens one by one and triggers network communication on every step instead of once per batch, so the communication latency directly limits the generation throughput, while a cheap Ethernet switch also cannot guarantee low and stable latency when handling multiple connections at once.
+
+\subsubsection{Heterogeneity and Scalability of the Cluster}
+Our current setup is completely homogeneous using identical Raspberry Pi 4 boards, which makes model splitting easier but does not really match real-world edge settings where people usually mix devices with different performance levels, and Distributed Llama requires the node count to be a power of two and also caps it by the number of KV heads, so it is quite hard to scale the cluster gradually or rebalance the workload, which becomes a real issue if we want to support heterogeneous setups or odd numbers of boards in the future.
+
+\subsection{Approaches and Design Alternatives}
+
+Facing these challenges, we looked at several possible options before deciding on our final approach in Section~6. The first idea was to write a distributed inference system completely from scratch, but we decided not to do this because it would take too much time on basic engineering work rather than on testing and analysis, especially when frameworks like Distributed Llama and \texttt{llama.cpp} already have solid implementations of tensor and pipeline parallelism that fit our research questions. Another choice was to run everything inside a simulator like some related papers do in Section~3, but we felt simulation alone could not show the real network delays from physical switches or the timing differences between real boards that RQ3 asks about, although we still used a laptop setup to do preliminary validation in Section~7.1 before testing on real hardware. So under our chosen tools, the main design question left is to choose between tensor and pipeline parallelism and pick the right splitting strategy for the two optimizations in RQ4, which we will explain in Section~6.
+
+% =====================================================
+\section{Proposed Approach and Methodology}
+
+\subsection{Overview of Our Approach}
+
+Our work is mainly an empirical measurement study testing existing distributed inference methods, like tensor and pipeline parallelism from Distributed Llama and \texttt{llama.cpp}, on real physical edge hardware instead of proposing a brand-new parallel algorithm, and we choose this empirical approach because most related papers in Section~3 either use pure simulation or run on high-end hardware like data-center GPU clusters, so it is really unclear whether their findings about system bottlenecks and scaling rules still hold for cheap CPU-only setups with normal Ethernet, and verifying this on real boards is the main contribution we want to make.
+
+\subsection{Experimental Methodology}
+
+Our overall method is divided into three clear stages:
+
+\textbf{Stage 1 -- Baseline validation (completed, Section~8.2--8.3).} We start by running the default Distributed Llama framework directly on our test cluster using its original tensor-parallel mode across 1, 2, and 4 nodes for the Q4\_0-quantized Llama-3.2-3B-Instruct model, which sets up a solid baseline to compare with later tests and also confirms that our hardware, switch network, and software libraries are all working properly as reported in Section~8.2--8.3.
+
+\textbf{Stage 2 -- Systematic exploration of the configuration space (completed, Section~8.4--8.6).} We switched to the RPC backend of \texttt{llama.cpp} so that tensor and pipeline parallelism (RQ2) can be compared with the same binaries, measured 1, 2 and 4 nodes, recorded CPU utilization and per-token network traffic on every node, and added a per-command timing log to every RPC server so that the per-token latency can be decomposed into its components (RQ3). The comparison with Qwen-3-8B was dropped in favour of a deeper bottleneck analysis on one model.
+
+\textbf{Stage 3 -- Optimization and evaluation (completed, Section~8.7--8.9).} The bottlenecks found in Stage~2 turned out to be different from the ones we expected in the mid-term plan: the per-token data volume is small and the network is not saturated, so lower-precision synchronization buffers would not help. Instead we implemented (i) a direct peer-to-peer allreduce that removes the head node from the synchronization path, (ii) an untied output layer that lets the largest matrix of the model be split across nodes, (iii) configuration-level optimizations (thread count, chunked pipelining, multi-request batching), and (iv) speed-proportional (uneven) splits for a heterogeneous cluster, in the spirit of Zhao et al.~\cite{zhao2024} and Zhang et al.~\cite{zhang2024edgeshard}. Output quality is checked with perplexity for every change that could affect it (RQ4).
+
+Across all three stages, we always keep the network topology fixed with a single switch in a star layout and use the same quantization level within each comparison set, changing only one variable at a time so that we can clearly see the impact of that specific change. All benchmark runs restart every RPC server first, report the mean of the repetitions of \texttt{llama-bench} (prompt of 32 tokens and 30 generated tokens unless stated otherwise), and record the temperature and throttling flags of every board; no board throttled during any of the reported runs.
+
+% =====================================================
+\section{Implementation}
+
+\subsection{Simulation and Validation}
+
+Before setting up the real Raspberry Pi boards, we first tested Distributed Llama and \texttt{llama.cpp} directly on a laptop using multiple local processes to simulate one root node and several workers talking through localhost, and this step let us check the whole build process, the model conversion flow that turns Hugging Face checkpoints~\cite{huggingface} into the quantized format needed by the framework, and the correctness of the final output tokens without worrying about the availability or stability of our physical boards.
+
+\subsection{Hardware Test on Pi Cluster}
+
+Our test setup uses Raspberry Pi 4 series boards where each board has a 4-core Cortex-A72 CPU at 1.8~GHz and 4~GB of RAM, and one board works as the root node to load the model while also computing its own slice as explained in Section~2.3.2, and we can add up to three worker boards to test setups with 1, 2, and 4 total nodes to follow the power-of-two rule of the framework. In the final experiments (Table~\ref{tab:hardware}) three boards are Raspberry Pi~400 and one is a Raspberry Pi~4B, all running 64-bit Debian~13; a LubanCat-5 board with a Rockchip RK3588 SoC (four Cortex-A76 cores at 2.3~GHz plus four Cortex-A55 cores, 4~GB) is used for the heterogeneity study.
+
+\begin{table}[H]
+\centering
+\caption{Devices used in the final experiments.}
+\label{tab:hardware}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llll@{}}
+\toprule
+Name & Board & CPU & Role \\
+\midrule
+rex & Raspberry Pi 400 & 4$\times$A72 @ 1.8 GHz & head (runs the benchmark) + RPC server \\
+finn, han & Raspberry Pi 400 & 4$\times$A72 @ 1.8 GHz & RPC server \\
+luthen & Raspberry Pi 4B & 4$\times$A72 @ 1.8 GHz & RPC server \\
+cat & LubanCat-5 (RK3588) & 4$\times$A76 @ 2.3 GHz + 4$\times$A55 & heterogeneity study \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Network Topology and Communication}
+
+All nodes are connected through a single Gigabit Ethernet switch (a Netgear M4300-28G, used as a plain layer-2 switch plus a DHCP server) in a star topology: every device has a direct, single-hop link to the switch, and no device relays traffic for another (unlike a chain or ring topology).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\textwidth]{figures/topology.pdf}
+\caption{Topology of our cluster in the final experiments: four Raspberry Pi boards, one LubanCat-5 (RK3588) board and the controlling laptop, all connected to one Gigabit switch (last octet of the 10.77.0.0/24 address shown).}
+\label{fig:topology}
+\end{figure}
+
+All boards are plugged into a single unmanaged Ethernet switch in a star layout so that every board has its own direct link without relaying traffic for other devices, and we picked this layout because it directly matches the root-to-worker point-to-point communication pattern used in tensor parallelism in Section~2.3.2, and it is also the easiest and cleanest way to separate compute latency from network delays.
+
+\subsection{Deployment on the Pi Cluster}
+
+\subsubsection{Root/Head Node and Worker Roles}
+Following the design of Distributed Llama in Section~2.3.2, one Raspberry Pi works as the root node to load the quantized model and tokenizer, process incoming prompts, run the generation loop, and send the model slices to all workers over the local network during startup, while the other boards just run the worker process listening on fixed IP addresses and ports, so they do not need any manual model configuration as long as they know their own IP and the root IP.
+
+\subsubsection{Model Partitioning across Devices}
+The framework cuts the model weights automatically and evenly across all nodes for tensor parallelism as described in Section~2.2.3, and we keep this default even split for our baseline tests, while trying out a load-aware uneven split is one of the main optimizations planned for Stage~3 in Section~6.2.
+
+\subsection{Benchmarking and Monitoring Pipeline}
+
+To collect our baseline numbers in Section~8.2--8.3, we run the built-in benchmark tool using \texttt{dllama inference}, which logs the local prediction time (\texttt{Pred}), the sync wait time (\texttt{Sync}), and the network bytes sent and received for every single token, while also giving the total prompt evaluation and generation throughput at the end, so this fully covers requirement R4 from Section~4.2 for recording latency and network traffic.
+
+\subsection{Deployment with the \texttt{llama.cpp} RPC Backend}
+
+For the pipeline/tensor comparison and all optimizations we use the RPC backend of \texttt{llama.cpp}. Every board runs \texttt{ggml-rpc-server -H 0.0.0.0 -t $T$}, where $T$ is the number of compute threads, and the head runs \texttt{llama-bench}, \texttt{llama-batched-bench} or \texttt{llama-cli} with \texttt{--rpc} listing all servers (including its own) and \texttt{-sm layer} or \texttt{-sm tensor}. Only the head needs the model file; the workers receive their weight shards over the network at start-up. Binaries are cross-compiled on a laptop in an ARM64 Docker container (statically linked, \texttt{-mcpu=cortex-a72}) and distributed as release archives, so that a new board is ready in about one minute instead of compiling for tens of minutes on the Pi. All scripts (setup, health check, benchmark, trace analysis) and raw logs are kept in a public repository\footnote{\url{https://github.com/44sunsetsf/dat300-edge-llm}; the modified \texttt{llama.cpp} is the \texttt{dat300} branch of \url{https://github.com/44sunsetsf/llama.cpp}.}, together with a step-by-step guide that states on which machine each step runs.
+
+\subsection{Per-Node Timing Log}\label{sec:trace}
+
+To answer RQ3 we need to know where each token's time goes on every node, which neither \texttt{llama-bench} nor Distributed Llama's \texttt{Pred}/\texttt{Sync} summary reveals for \texttt{llama.cpp}. We added an optional timing log to the RPC server (enabled by the environment variable \texttt{GGML\_RPC\_TRACE}): for each command it records the start time, the idle time before the command, the duration, and details such as the number of bytes or graph nodes. For an allreduce it further splits the duration into waiting for the local computation, the network exchange (which includes waiting for the slowest peer) and the local summation. A script segments the log into tokens and reports, per node, the average time spent on computation, synchronization, data transfer and idling. With logging enabled, 2-node decode throughput changes from 2.93 to 2.90 tokens/s, i.e.\ the overhead is about 1\%.
+
+\subsection{Modification 1: Direct Peer-to-Peer Allreduce}\label{sec:allreduce}
+
+Stock \texttt{llama.cpp} (commit \texttt{bd4eeaa}) only lets the RPC servers exchange partial results directly when there are exactly two of them; for any other count the allreduce falls back to a generic path in which the head downloads every partial tensor, sums them and uploads the result again. We generalized the direct path to any power-of-two number of nodes up to 16 using \emph{recursive doubling}: in round $k$ each rank $r$ exchanges its current partial sum with rank $r \oplus 2^k$ and adds what it receives, so after $\log_2 N$ rounds every rank holds the full sum. Each rank therefore sends
+\begin{equation}
+V_{\text{rd}} = \log_2(N)\, d_{model}\, s
+\label{eq:rd}
+\end{equation}
+bytes per allreduce, compared with $V_{\text{ag}} = (N-1)\, d_{model}\, s$ for an all-gather variant that finishes in a single round (also implemented and selectable with an environment variable). With $d_{model}=3072$ and $s=4$ bytes, one round moves 12~KB, so a 4-node token needs $56 \times 2 \times 12~\text{KB} \approx 1.4$~MB per node, in line with the 1.5--1.6~MB we measure (Table~\ref{tab:tp-scaling}). We also sum small payloads directly in host memory instead of building a separate compute graph for the addition (local summation time per token 3~ms $\rightarrow$ 0.9~ms), let all ranks build a full mesh of connections at start-up, and increased the listen backlog of the server socket from 1 to 64, which fixed a start-up deadlock when eight servers connect to each other simultaneously (found in an 8-container simulation on the laptop).
+
+\subsection{Modification 2: Untied Output Layer}\label{sec:untied}
+
+Llama-3.2 ties the output projection (\texttt{lm\_head}, $128256 \times 3072$, stored as Q6\_K, 323~MB, 18\% of the model file) to the input embedding: the GGUF file contains only \texttt{token\_embd.weight}, which is used both to look up the input token and to compute the logits. \texttt{llama.cpp}'s tensor-split rules split a tensor named \texttt{output.weight} along the vocabulary dimension, but treat \texttt{token\_embd.weight} as a replicated (``mirrored'') tensor, so when the model is tied every node computes the complete output projection. Our script \texttt{untie\_output.py} (using the \texttt{gguf} Python package) rewrites the model file with an additional \texttt{output.weight} tensor that is a byte-for-byte copy of \texttt{token\_embd.weight}. The arithmetic is unchanged, but the output layer is now split $N$ ways. The file grows from 1.92 to 2.25~GB, which only matters on the head.
+
+\subsection{Network Configuration}
+
+Our first measurements on the switch were repeatedly interrupted because boards disappeared from the network for tens of seconds. The NetworkManager log on the boards showed the cause: the wired interfaces were configured for DHCP, the switch had no DHCP server, and after each 45-second DHCP timeout NetworkManager declared the connection failed and reset the interface, removing any manually added address. We enabled the switch's DHCP server with one static binding per board MAC address, gave the switch itself a management address, and additionally configured every board with the same static address, so that the cluster no longer depends on any DHCP server. Afterwards the network was stable for the rest of the experiments (0\% packet loss, round-trip time 0.05--0.15~ms between boards). The subnet 10.77.0.0/24 was chosen because the laptops' Wi-Fi uses 10.0.0.0/16, which would otherwise shadow the cluster addresses.
+
+\subsection{Builds for Heterogeneous Boards}
+
+The generic ARM64 build targets the Cortex-A72 of the Raspberry Pi, which lacks the \texttt{SDOT} dot-product instructions (\texttt{asimddp}) that \texttt{llama.cpp} uses for its Q4\_0 kernels on newer cores. For the RK3588 board we build the same commit with \texttt{-mcpu=cortex-a76}; the setup script detects the Cortex-A76 cores and installs this build automatically, and the benchmark script pins its RPC server to the four big cores. Since all builds come from the same commit, they interoperate in one cluster.
+
+% =====================================================
+\section{Evaluation}
+
+\subsection{Experimental Setup and Evaluation Goals}
+The main goal of this first test round is to make sure our cluster works reliably and get an unoptimized performance baseline before we start changing any code, so we run the official \texttt{dllama inference} benchmark on Distributed Llama~\cite{distributedllama} using the Q4\_0-quantized Llama-3.2-3B-Instruct model with its default tensor-parallel setup, and we only change the node count using 1, 2, and 4 Raspberry Pi boards while keeping the model, the quantization format, and the switch network completely the same, and for each run we track per-token numbers like prediction time (\texttt{Pred}), sync time (\texttt{Sync}), bytes sent and received per board, and the overall throughput values.
+
+\subsection{Baseline: Scaling with the Number of Nodes}
+Table~\ref{tab:baseline} shows the baseline numbers we got on 1, 2, and 4 nodes, where each run generated 30 tokens after a warm-up phase of 32 prompt batches and 2 tokens.
+
+\begin{table}[H]
+\centering
+\caption{Baseline results for Llama-3.2-3B-Instruct (Q4\_0) on 1, 2 and 4 Raspberry Pi nodes connected through a switch, using the unmodified Distributed Llama framework.}
+\label{tab:baseline}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Nodes & Sent/token & Recv/token & Eval.\ tok/s (ms/tok) & Pred.\ tok/s (ms/tok) & Speedup (pred.) \\
+\midrule
+1 & 0 kB   & 0 kB   & 2.04 (491.32) & 1.97 (508.16) & 1.00$\times$ \\
+2 & 190 kB & 429 kB & 3.50 (285.44) & 3.55 (281.46) & 1.81$\times$ \\
+4 & 571 kB & 911 kB & 5.38 (185.87) & 5.81 (172.02) & 2.95$\times$ \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+On a single board without any network communication, the decode speed runs at 1.97 tokens/s, but when we distribute the model over 2 nodes with tensor parallelism, the throughput goes up to 3.55 tokens/s, and reaching 4 nodes brings it to 5.81 tokens/s, which gives a speedup of 1.81$\times$ on 2 nodes and 2.95$\times$ on 4 nodes compared to running on just one board, but this is still noticeably lower than the ideal linear speedup of 2$\times$ and 4$\times$, consistent with the extended Amdahl-style model of Eq.~\ref{eq:amdahl} in Section~3.3.
+
+\subsection{Network Traffic Patterns during Inference}
+The network data sent and received for each token increases clearly as we add more nodes, starting from 0~kB on 1 node to 190~kB sent and 429~kB received on 2 nodes, and reaching 571~kB sent and 911~kB received on 4 nodes, which follows the qualitative trend predicted by Eq.~\ref{eq:allreduce} in Section~2.2.3, and at the same time the sync time (\texttt{Sync}) grows from 0~ms on 1 node to about 20--26~ms on 2 nodes and 38--45~ms on 4 nodes, even though the local computation time (\texttt{Pred}) drops from 490--550~ms down to 250--265~ms and 126--180~ms, which shows that while adding boards cuts down per-node compute time, it brings a heavy sync overhead that explains why our speedup in Table~\ref{tab:baseline} is sub-linear.
+
+\subsection{Pipeline vs.\ Tensor Parallelism in \texttt{llama.cpp}}
+
+Sections~8.2--8.3 used Distributed Llama, which only offers tensor parallelism. To compare the two strategies on equal terms we repeated the scaling experiment with the \texttt{llama.cpp} RPC backend on the same switch. Table~\ref{tab:tp-scaling} and Figures~\ref{fig:decode-scaling}--\ref{fig:prefill-scaling} summarize the results. Each RPC server uses $T=3$ threads for tensor parallelism (the fastest setting for the original model) and $T=4$ for pipeline parallelism, where only one board computes at a time.
+
+\begin{table}[H]
+\centering
+\caption{Scaling of \texttt{llama.cpp} on 1, 2 and 4 Raspberry Pi nodes (Llama-3.2-3B-Instruct Q4\_0, 32-token prompt, 30 generated tokens). Head traffic is the number of bytes received/sent by the head node per generated token. ``Direct allreduce'' and ``untied'' are our two optimizations (Sections~\ref{sec:allreduce} and~\ref{sec:untied}).}
+\label{tab:tp-scaling}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Configuration & Nodes & Prefill (tok/s) & Decode (tok/s) & Speedup (decode) & Head traffic / token \\
+\midrule
+Single node & 1 & 4.14 & 1.84 & 1.00$\times$ & -- \\
+\midrule
+PP & 2 & 4.12 & 1.88 & 1.02$\times$ & 519 kB / 17 kB \\
+PP & 4 & 4.01 & 1.84 & 1.00$\times$ & 547 kB / 51 kB \\
+\midrule
+TP, stock & 2 & 5.93 & 2.86 & 1.55$\times$ & 696 kB / 776 kB \\
+TP, stock & 4 & 5.77 & 1.03 & 0.56$\times$ & 4.4 MB / 49.9 MB \\
+TP, direct allreduce & 2 & 5.94 & 3.00 & 1.63$\times$ & 702 kB / 773 kB \\
+TP, direct allreduce & 4 & 9.68 & 2.99 & 1.63$\times$ & 1.5 MB / 1.6 MB \\
+TP, direct allreduce + untied & 2 & 5.98 & 3.45 & 1.88$\times$ & 956 kB / 775 kB \\
+TP, direct allreduce + untied & 4 & 10.07 & 4.85 & 2.64$\times$ & -- \\
+\quad + 4 threads per server & 4 & \textbf{12.57} & \textbf{5.04} & \textbf{2.74$\times$} & -- \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/decode_scaling.pdf}
+\caption{Decode throughput versus the number of nodes. The Distributed Llama curve is the baseline of Table~\ref{tab:baseline}. Stock \texttt{llama.cpp} TP collapses at 4 nodes; our two optimizations together bring it close to the Distributed Llama baseline, while PP stays at the single-node speed.}
+\label{fig:decode-scaling}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/prefill_scaling.pdf}
+\caption{Prefill throughput (32-token prompt) versus the number of nodes.}
+\label{fig:prefill-scaling}
+\end{figure}
+
+Three observations answer RQ1 and RQ2. First, \emph{pipeline parallelism never beats a single node for one request}: 1.84--1.88 tokens/s decode and 4.0--4.1 tokens/s prefill on 1, 2 and 4 nodes, because the stages work strictly one after another. Its communication overhead is negligible (the head receives about 0.5~MB of logits per token from the last stage), so PP costs almost nothing, but it also gains nothing. Second, \emph{stock \texttt{llama.cpp} TP is slower on 4 nodes than on 2, and slower than a single node} (1.03 tokens/s), with the head sending 49.9~MB per token; we analyse this in Section~8.6. Third, with our optimizations TP scales to 5.04 tokens/s decode (2.74$\times$) and 12.57 tokens/s prefill (3.0$\times$) on 4 nodes, close to the Distributed Llama baseline (5.81 tokens/s prediction, 5.38 tokens/s evaluation), which uses its own TP implementation and model format.
+
+\subsection{CPU and Memory Utilization}
+
+Table~\ref{tab:cpu} lists the average user-space CPU utilization of every board during the speed measurement (sampled with \texttt{vmstat} once per second). A single node keeps all four cores busy (90\%), which together with the low arithmetic intensity of decoding (Eq.~\ref{eq:intensity}) confirms that one Pi is limited by memory bandwidth rather than by idle cores: adding a fifth thread is impossible and going from 3 to 4 threads only helps when the compute share is small. In pipeline parallelism every board is busy only $1/N$ of the time (15--25\%). In the stock 4-node TP the workers are idle most of the time (16\%), waiting for the head to relay their partial sums. The optimized TP keeps all boards at 37--47\%; the rest is time spent in synchronization and idling, analysed below.
+
+\begin{table}[H]
+\centering
+\caption{Average CPU utilization (user time) per board during the 4-node measurements (head first).}
+\label{tab:cpu}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Configuration & CPU utilization (head / workers) & Decode (tok/s) \\
+\midrule
+Single node, 4 threads & 90\% & 1.84 \\
+PP, 4 nodes & 20\% / 15--18\% & 1.84 \\
+TP stock, 4 nodes & 26\% / 16\% & 1.03 \\
+TP direct allreduce, 4 nodes & 39\% / 24--25\% & 2.99 \\
+TP direct allreduce + untied, 4 threads, 4 nodes & 47\% / 37--39\% & 5.04 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Memory was never a limiting factor for this model: every board has about 3.4--3.5~GB available after boot, a single node needs 1.9~GB for the weights, and in TP each node stores only about $1/N$ of the layer weights plus the replicated embedding table (323~MB). The untied model adds one more 323~MB matrix, but it is split across the nodes. Memory capacity becomes relevant only for models larger than about 3~GB, which is where pipeline parallelism (Section~8.8) has its real use.
+
+\subsection{Bottleneck Analysis: Bandwidth, Latency, Memory or Heterogeneity?}
+
+\paragraph{Bottleneck 1: allreduce relayed through the head.} Stock \texttt{llama.cpp} lets the RPC servers exchange partial sums directly only when there are exactly two of them. With four servers, every one of the 56 allreduces per token makes the head download the partial tensors of all servers, add them, and upload the results again. The head then sends 49.9~MB and receives 4.4~MB per token (Figure~\ref{fig:head-traffic}), and its serial round trips grow with $N$; the workers are idle 84\% of the time (Table~\ref{tab:cpu}). This is a limitation of the implementation, not of tensor parallelism: Distributed Llama on the same hardware reaches 5.81 tokens/s.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.6\textwidth]{figures/head_traffic.pdf}
+\caption{Bytes sent by the head node per generated token (log scale). With four nodes the stock implementation relays every allreduce through the head.}
+\label{fig:head-traffic}
+\end{figure}
+
+\paragraph{Bottleneck 2: the replicated output layer.} After removing bottleneck~1, 4-node decode (2.99 tokens/s) was no faster than 2-node decode (3.00 tokens/s). Figure~\ref{fig:trace-breakdown} and Table~\ref{tab:trace} decompose one decode token on every node using the timing log. With the original model, every node spends 80--85~ms per token on the final output projection, the same as with two nodes: the 323~MB output matrix is not split at all (Section~\ref{sec:untied}). In addition, the head board computes each transformer layer almost twice as slowly as the workers (3.8 vs.\ 2.0~ms per layer), so the workers wait more than 100~ms per token inside the allreduce for the head. We first suspected the Raspberry Pi~4B (luthen) or contention with the benchmark process on the head, but reducing the head's RPC server to two threads did not change its compute time (290~ms), and the effect disappears completely with the untied model, so it is a consequence of the replicated output layer. With the untied output layer, the output projection takes 20--22~ms per node (one quarter), all nodes compute for the same time (131--141~ms), and a token takes 207~ms instead of 340~ms.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/trace_breakdown_tp4.pdf}
+\caption{Per-node decomposition of one decode token in 4-node TP, from the timing logs (average over 30 tokens). Left: original model; the output layer is computed in full on every node and the head is slow, so the workers wait in the allreduce. Right: untied output layer.}
+\label{fig:trace-breakdown}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Time per decode token in 4-node TP, from the timing logs (ms, average over 30 tokens). ``Allreduce'' includes waiting for the slowest peer; ``idle'' is time the server waits for the next command from the head.}
+\label{tab:trace}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+Model & Node & Layers & Output layer & Allreduce & Idle & Total \\
+\midrule
+Tied (original) & rex (head) & 209 & 85 & 26 & 18 & 339 \\
+ & finn / han / luthen & 111--120 & 80--85 & 117--126 & 17--23 & 339--340 \\
+Untied & rex (head) & 121 & 22 & 30 & 34 & 206 \\
+ & finn / han / luthen & 111--118 & 20--21 & 33--40 & 33--35 & 206 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The network is not the bottleneck.} With the optimized TP each node sends about 1.6~MB per token; at 5 tokens/s this is about 64~Mbit/s, 6\% of the Gigabit link. The latency component is also small on the switch: 56 allreduces with $\log_2 4 = 2$ rounds each, at a round-trip time of about 0.1~ms, add roughly 11~ms per token. Halving the number of rounds with the all-gather algorithm (Eq.~\ref{eq:rd}) does not change the throughput (4.81 vs.\ 4.85 tokens/s). This contrasts with our laptop simulation, where we had assumed 2~ms of latency per hop and the number of serial round trips dominated; on a real switch the latency is twenty times lower.
+
+\paragraph{A performance model.} The timing logs suggest the following model of the decode time per token on $N$ nodes:
+\begin{equation}
+T(N) = \frac{T_{L}}{N} + \frac{T_{O}}{k(N)} + n_{s}\, r(N)\, t_{r} + T_{h}(N),
+\qquad k(N) = \begin{cases} 1 & \text{tied output} \\ N & \text{untied output} \end{cases}
+\label{eq:model}
+\end{equation}
+where $T_L$ is the single-node time of the transformer layers, $T_O$ the single-node time of the output layer, $n_s = 56$ the number of allreduces per token, $r(N)=\log_2 N$ the number of rounds per allreduce, $t_r$ the time per round including waiting for the slowest peer, and $T_h(N)$ the time the servers wait for the head (sampling, fetching the logits, sending the next token). From the single-node throughput, $T_L + T_O = 1000/1.84 = 543$~ms, and the trace gives $T_O \approx 83$~ms, so $T_L \approx 460$~ms. With $t_r \approx 0.3$~ms and $T_h = 8$/33~ms for 2/4 nodes (both from the traces), Eq.~\ref{eq:model} predicts 3.37 and 4.94 tokens/s for the untied model on 2 and 4 nodes (measured: 3.45 and 4.85), and 2.96 tokens/s for the tied model on 2 nodes (measured: 3.00). For the tied model on 4 nodes it predicts 3.78 tokens/s but we measure 2.99; the difference is the extra head slowdown described above. Figure~\ref{fig:perf-model} shows the model; extrapolating $T_h(8) \approx 45$~ms gives about 6.1 tokens/s for 8 untied nodes, an estimate that remains to be verified. The model also shows what limits further scaling: the compute terms shrink with $N$, while the synchronization term grows with $\log_2 N$ and the head term does not shrink at all, so at 8 nodes about half of each token would be spent outside computation, in line with Amdahl's law (Eq.~\ref{eq:amdahl}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.66\textwidth]{figures/perf_model.pdf}
+\caption{Decode throughput predicted by Eq.~\ref{eq:model} (dashed) and measured (markers). The 8-node point is a projection.}
+\label{fig:perf-model}
+\end{figure}
+
+\paragraph{Answer to RQ3.} On one board the bottleneck is memory bandwidth. In stock \texttt{llama.cpp} TP it is the head node, which relays all synchronization traffic. After fixing that, it is the part of the computation that is not split (the tied output layer), and after fixing that as well, the remaining time per token is about two thirds computation and one third synchronization plus waiting for the head. Network bandwidth is never the bottleneck on a Gigabit switch, and network latency is a minor term ($\approx$10\% of a token at 4 nodes). Heterogeneity is discussed in Section~8.9.
+
+\subsection{Evaluation of Optimization Strategies}
+
+\subsubsection{Direct Allreduce and Improved Model Partitioning}
+
+Figure~\ref{fig:ablation} and Table~\ref{tab:ablation} show the effect of each optimization on 4-node decode. The two main optimizations are complementary: the untied model alone does not help the stock implementation (1.03 $\rightarrow$ 1.09 tokens/s), because the head relay dominates, and the direct allreduce alone stops at 2.99 tokens/s, because the output layer is replicated. Together they give 4.85 tokens/s. Once the output layer is split, the computation per node is small enough that a fourth thread per server pays off (5.04 tokens/s decode and 12.57 tokens/s prefill, compared with 4.85 and 10.07 with three threads), whereas with the original model three threads were faster than four by about 20\%. The improvement holds for long generations: with a 512-token prompt and 128 generated tokens the untied model reaches 4.93 tokens/s, compared with 2.93 tokens/s for the original model.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/ablation_tp4.pdf}
+\caption{Effect of each optimization on 4-node TP decode throughput.}
+\label{fig:ablation}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Ablation on 4 nodes (TP, 3 threads per server unless noted).}
+\label{tab:ablation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Configuration & Prefill (tok/s) & Decode (tok/s) & vs.\ stock \\
+\midrule
+Stock, original model & 5.77 & 1.03 & 1.0$\times$ \\
+Stock, untied model & 5.83 & 1.09 & 1.1$\times$ \\
+Direct allreduce, original model & 9.68 & 2.99 & 2.9$\times$ \\
+Direct allreduce, output layer re-quantized to Q4\_0 (tied) & 9.78 & 3.25 & 3.2$\times$ \\
+Direct allreduce, untied, all-gather allreduce & 10.01 & 4.81 & 4.7$\times$ \\
+Direct allreduce, untied & 10.07 & 4.85 & 4.7$\times$ \\
+Direct allreduce, untied, 4 threads & \textbf{12.57} & \textbf{5.04} & \textbf{4.9$\times$} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsubsection{Quantization and Communication Reduction}
+
+The mid-term plan proposed to reduce the synchronization volume with lower-precision buffers, i.e.\ to shrink $s$ in Eq.~\ref{eq:allreduce}. The measurements above show that this would not pay off: bandwidth utilization is about 6\%, and even halving the number of synchronization rounds (all-gather) had no measurable effect. We therefore did not pursue it. Reducing the precision of the output layer instead (re-quantizing the tied embedding from Q6\_K to Q4\_0, all other tensors unchanged) makes the replicated output layer cheaper and gives +9\% on 2 nodes and 3.25 vs.\ 2.99 tokens/s on 4 nodes, but splitting the output layer (untying) is much more effective and does not change the model.
+
+\subsubsection{Throughput--Accuracy Trade-off}
+
+Table~\ref{tab:ppl} checks the output quality. The untied model produces exactly the same perplexity as the original model in every chunk, as expected from an identical computation. Re-quantizing the output layer to Q4\_0 costs 0.6\% in perplexity, within the statistical uncertainty. Tensor parallelism itself changes the perplexity only in the last digits, because the prefill phase exchanges large tensors in BF16 (an upstream design choice) and the summation order differs. The best configuration (direct allreduce + untied) therefore has no accuracy cost.
+
+\begin{table}[H]
+\centering
+\caption{Perplexity checks (lower is better). Rows in the same group use the same evaluation text.}
+\label{tab:ppl}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}lll@{}}
+\toprule
+Model / configuration & Setting & Perplexity \\
+\midrule
+Original model, single node & 12 chunks of 256 tokens, RK3588 & 7.2208 $\pm$ 0.538 \\
+Untied model, single node & same & 7.2208 $\pm$ 0.538 (identical in every chunk) \\
+\midrule
+Original model, single node & 6 chunks of 256 tokens & 8.08 \\
+Output layer re-quantized to Q4\_0 & same & 8.13 (+0.6\%, within $\pm$0.27) \\
+\midrule
+Single node & 6 chunks, laptop simulation & 11.13 \\
+Direct-allreduce TP, 4 / 8 nodes & same & 11.09 / 11.12 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Optimizing Pipeline Parallelism}
+
+Since PP cannot speed up a single request, we tested the two mechanisms that let several stages work at the same time.
+
+\paragraph{Chunked (pipelined) prefill.} If a prompt is split into $m$ micro-batches (\texttt{-ub}, the maximum number of tokens per chunk), stage $i$ can process chunk $j+1$ while stage $i+1$ processes chunk $j$. With $N$ equally fast stages and stage time $t$ per chunk, the prefill time drops from $mNt$ to $(m+N-1)t$, i.e.
+\begin{equation}
+S_{\text{pipe}} = \frac{mN}{m+N-1},
+\label{eq:pipe}
+\end{equation}
+which is $16/7 \approx 2.3$ for $m=N=4$. \texttt{llama.cpp} enables this automatically when all devices support asynchronous computation and events, which the RPC backend does (the log shows ``pipeline parallelism enabled''). Table~\ref{tab:pp} shows that it works but yields far less than Eq.~\ref{eq:pipe}: a 128-token prompt split into four chunks of 32 tokens is processed 12\% faster on 4 PP nodes (4.68 vs.\ 4.16 tokens/s), while chunking alone has no effect on a single node (4.13 tokens/s). We believe, without having verified it with the timing log yet, that the activations between consecutive stages are still relayed through the head (\texttt{get\_tensor} followed by \texttt{set\_tensor}), which serializes most of the pipeline; letting the servers send activations to each other directly, as we did for the allreduce, is the natural next step.
+
+\paragraph{Serving several requests.} During decoding the weights must be streamed from memory once per step regardless of how many sequences are processed, so for a memory-bound device the aggregate throughput with $B$ concurrent requests behaves like
+\begin{equation}
+X(B) \approx \frac{B}{T_{w} + B\, t_{c}},
+\label{eq:batch}
+\end{equation}
+where $T_w$ is the time to stream the weights and $t_c$ the per-sequence compute time. It grows almost linearly while $B\,t_c \ll T_w$ and saturates at $1/t_c$. We measured it with \texttt{llama-batched-bench} (32-token prompt and 16 generated tokens per request, $B \in \{1,4,8\}$). As Figure~\ref{fig:pp} and Table~\ref{tab:pp} show, batching raises the aggregate decode throughput of a single node from 1.85 to 3.46 tokens/s and of 4-node PP from 1.83 to 3.24 tokens/s, i.e.\ PP benefits from batching exactly like a single node but is not better at it. Splitting the batch of 8 requests into four micro-batches of 2 (\texttt{-ub 2}) pipelines the decode steps across the stages and raises 4-node PP to 4.18 tokens/s (+29\%), the only PP configuration that beats a single node. 4-node TP, however, reaches 7.83 tokens/s with 8 requests.
+
+\begin{table}[H]
+\centering
+\caption{Pipeline-parallel optimizations on 4 Raspberry Pi nodes.}
+\label{tab:pp}
+\begin{tabular}{@{}llc@{}}
+\toprule
+Experiment & Configuration & Throughput (tok/s) \\
+\midrule
+Prefill, 128-token prompt & Single node, \texttt{-ub 32} & 4.13 \\
+ & PP, \texttt{-ub 128} (1 chunk) & 4.16 \\
+ & PP, \texttt{-ub 32} (4 chunks) & \textbf{4.68} (+12\%) \\
+\midrule
+Aggregate decode, $B = 1 / 4 / 8$ & Single node & 1.85 / 3.40 / 3.46 \\
+ & PP & 1.83 / 3.17 / 3.24 \\
+ & PP, $B=8$, \texttt{-ub 2} (pipelined decode) & \textbf{4.18} (+29\%) \\
+ & TP, untied, 4 threads & 4.26 / 6.46 / \textbf{7.83} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{figures/pp_pipeline_batching.pdf}
+\caption{(a) Pipelined prefill on 4 PP nodes; the dotted line is the ideal speedup of Eq.~\ref{eq:pipe}. (b) Aggregate decode throughput when serving several requests at once.}
+\label{fig:pp}
+\end{figure}
+
+On a cluster of small boards with a fast local network, TP is therefore better than PP for single requests, for prefill and for serving several requests. The real use of PP is capacity: it lets a model that does not fit into one board run at roughly single-board speed. Since TP also stores only $1/N$ of the layer weights per node, this advantage matters only for models where TP is not applicable (e.g.\ when the number of KV heads is not divisible by $N$).
+
+\subsection{Heterogeneous Cluster}
+
+Real edge deployments mix devices of different speed. Table~\ref{tab:hetero} and Figure~\ref{fig:hetero} report experiments with one LubanCat-5 (RK3588) board.
+
+\paragraph{The build matters more than the board.} With the generic Cortex-A72 build, the RK3588 board decodes at 5.84 tokens/s using its four big cores. Compiled for the Cortex-A76 (with dot-product instructions), it reaches 12.28 tokens/s decode and 48.75 tokens/s prefill, 2.1$\times$ and 6.5$\times$ more, and 6.7$\times$ the decode speed of a Raspberry Pi. Using all eight cores is slower (10.12 tokens/s) than using only the four big cores, because the parallel kernels wait for the slow Cortex-A55 cores.
+
+\paragraph{Weighted splits.} With an even split, every node of a TP or PP group receives the same amount of work and the fast board waits for the slow ones: in a 2-node TP group of one Pi and the RK3588 board, the timing log shows the RK3588 board computing for 65~ms and then waiting 200~ms per token for the Pi. Both split modes accept a per-device proportion (\texttt{-ts}). For TP, the per-token time is determined by the slowest node,
+\begin{equation}
+T = \max_i \frac{w_i}{v_i}, \qquad \text{minimized by} \quad w_i = \frac{v_i}{\sum_j v_j},
+\label{eq:weighted}
+\end{equation}
+where $w_i$ is the share of the work and $v_i$ the speed of node $i$. A split of 1:4 between the Pi and the RK3588 board raises TP decode from 3.24 to 7.00 tokens/s and prefill from 7.71 to 17.17 tokens/s; for PP, a 1:6 split raises decode from 3.07 to 5.52 tokens/s. Nevertheless, for this model every mixed configuration is slower than the RK3588 board alone (12.28 tokens/s), because the Pi adds more time than it saves: heterogeneous clusters are useful only when the model does not fit on the fastest device, and then the split must follow the device speeds.
+
+\begin{table}[H]
+\centering
+\caption{Heterogeneous experiments with one LubanCat-5 (RK3588) board (``cat''); the head is a Raspberry Pi 400 in all cluster runs.}
+\label{tab:hetero}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Configuration & Prefill (tok/s) & Decode (tok/s) \\
+\midrule
+cat alone, generic A72 build, 4 big cores & 7.48 & 5.84 \\
+cat alone, A76 build, 8 cores & 47.44 & 10.12 \\
+cat alone, A76 build, 4 big cores & \textbf{48.75} & \textbf{12.28} \\
+\midrule
+TP, Pi + cat, even split & 7.71 & 3.24 \\
+TP, Pi + cat, \texttt{-ts 1/4} & 17.17 & 7.00 \\
+PP, Pi + cat, even split & 6.25 & 3.07 \\
+PP, Pi + cat, \texttt{-ts 1/6} & 10.57 & 5.52 \\
+TP, cat + 3 Pis, even split & 12.28 & 4.57 \\
+PP, cat + 3 Pis, 128-token prompt, \texttt{-ub 32}, even split & 6.07 & 2.12 \\
+PP, cat + 3 Pis, 128-token prompt, \texttt{-ub 32}, \texttt{-ts 1/12/1/1} & 13.12 & 3.47 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{figures/heterogeneous.pdf}
+\caption{(a) The RK3588 board with different builds and core sets. (b) Mixing it with Raspberry Pis; hatched bars use a speed-proportional split.}
+\label{fig:hetero}
+\end{figure}
+
+\subsection{Discussion: Connecting the Results Back to the Requirements}
+
+Table~\ref{tab:summary} summarizes the bottlenecks we found, the optimizations we applied and their measured effects. Regarding the requirements of Section~4.2: the cluster runs a model by splitting both memory and compute across the boards (R1) on commodity hardware without accelerators (R2); our direct allreduce supports any power-of-two number of nodes up to 16 without re-slicing the model by hand (R3); the timing log records computation, synchronization, transfer and idle time per token and per node, complemented by CPU utilization and network counters (R4); and every result is produced by a script in the public repository, with raw logs and timing logs checked in, and repeated runs agreeing within a few percent (R5).
+
+\begin{table}[H]
+\centering
+\caption{Summary of bottlenecks, optimizations and measured effects (4 Raspberry Pi nodes unless noted).}
+\label{tab:summary}
+\small
+\begin{tabular}{@{}p{2.2cm}p{4.7cm}p{4.6cm}p{3.0cm}@{}}
+\toprule
+Area & Bottleneck & Optimization & Effect \\
+\midrule
+TP & Allreduce relayed through the head (49.9 MB/token) & Direct peer-to-peer recursive-doubling allreduce & decode 1.03 $\rightarrow$ 2.99 \\
+TP & Tied output layer replicated on every node (80 ms/token/node) & Untied output layer (identical results) & 2.99 $\rightarrow$ 4.85 \\
+TP & Compute share per node becomes small & 4 threads per RPC server & 4.85 $\rightarrow$ 5.04; prefill 10.1 $\rightarrow$ 12.6 \\
+PP & Only one stage active per request & Chunked prefill (\texttt{-ub 32}) & prefill +12\% \\
+PP & Same, with several requests & Batching + pipelined decode (\texttt{-ub 2}) & 3.24 $\rightarrow$ 4.18 \\
+Network & DHCP timeouts reset the interfaces & Switch DHCP with MAC bindings + static addresses & no interruptions \\
+Heterogeneity & Generic build lacks dot-product kernels & Build for Cortex-A76, pin to big cores & RK3588: 5.84 $\rightarrow$ 12.28 \\
+Heterogeneity & Even split waits for the slowest node & Speed-proportional split (\texttt{-ts}) & Pi + RK3588 TP: 3.24 $\rightarrow$ 7.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two of our mid-term expectations turned out to be wrong, which is itself a useful result. We expected communication volume to be the main scaling bottleneck and planned to reduce it; on a switched Gigabit network the volume is small and the latency is low, and the dominant problems were implementation choices: who relays the synchronization, and which tensors are split. We also expected pipeline parallelism to be competitive for edge clusters because of its low communication volume; it is cheap, but without parallel work across stages it cannot be faster than one board.
+
+% =====================================================
+\section{Conclusions}
+
+\subsection{Summary}
+We deployed distributed LLM inference on a physical cluster of Raspberry Pi boards connected by a Gigabit switch and studied it with two frameworks. Distributed Llama gives a tensor-parallel baseline of 1.97, 3.55 and 5.81 tokens/s on 1, 2 and 4 nodes. With \texttt{llama.cpp}, which supports both strategies, pipeline parallelism stays at single-node speed (1.84 tokens/s) for one request, while stock tensor parallelism collapses to 1.03 tokens/s on four nodes because all synchronization is relayed through the head. A per-node timing log let us find and remove two bottlenecks: the head relay (replaced by a direct recursive-doubling allreduce) and the replicated tied output layer (removed by storing an identical untied copy). Together with a thread-count adjustment, 4-node decode improves from 1.03 to 5.04 tokens/s (4.9$\times$; 2.7$\times$ over one board) and prefill from 4.14 to 12.57 tokens/s, without any change in the model's output. For pipeline parallelism, chunked prefill and pipelined multi-request decoding give +12\% and +29\%, but tensor parallelism is better on every metric we measured. A heterogeneous RK3588 board is 6.7$\times$ faster than a Pi when compiled for its cores, and mixing devices requires speed-proportional splits.
+
+Our answers to the research questions are: (RQ1) with a good implementation, decode throughput scales sub-linearly (2.7$\times$ on 4 nodes) and prefill nearly linearly (3.0$\times$); (RQ2) TP is clearly better than PP on these devices, while PP is only useful for capacity; (RQ3) the bottleneck is memory bandwidth on one board and, on the cluster, the parts of the computation and synchronization that do not shrink with $N$ (the head relay, the unsplit output layer, and the per-token head overhead), not network bandwidth; (RQ4) simple changes (a different allreduce, an untied model file, the thread count, and a weighted split) improve throughput substantially without any loss of accuracy.
+
+\subsection{Limitations}
+Our measurements use at most four Raspberry Pi nodes and one heterogeneous board, so the 8-node numbers are model projections (about 6 tokens/s from Eq.~\ref{eq:model}). We studied one model (Llama-3.2-3B-Instruct, Q4\_0); larger models that do not fit on one board, where pipeline parallelism and heterogeneous splits become essential, were not measured. The explanation for the limited gain of pipelined prefill is a hypothesis that we have not yet confirmed with the timing log, and the head slowdown in the tied 4-node configuration was observed but not fully explained. Each configuration was measured with one to two repetitions of \texttt{llama-bench}; repeated configurations agreed within a few percent, but we did not compute confidence intervals.
+
+\subsection{Further Study Directions}
+The most promising next steps follow directly from our bottleneck analysis: verifying the 8-node projection on real hardware; sending pipeline activations directly between RPC servers instead of through the head, which Eq.~\ref{eq:pipe} suggests could more than double the pipelined prefill throughput; reducing the per-token head overhead $T_h$ in Eq.~\ref{eq:model}, which becomes the largest non-compute term at 8 nodes; running models larger than one board's memory to measure pipeline parallelism and weighted heterogeneous splits where they are actually needed; and combining our communication optimizations with speculative decoding~\cite{leviathan2023fast} or KV cache compression~\cite{li2024surveykv}.
+
+% =====================================================
+\begin{thebibliography}{99}
+
+% --- Core Architecture & Foundational Models ---
+\bibitem{vaswani2017attention}
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N.~Gomez, L.~Kaiser, and I.~Polosukhin,
+``Attention is All You Need,''
+in \emph{Advances in Neural Information Processing Systems (NeurIPS)}, vol.~30, 2017.
+
+\bibitem{huggingface}
+Hugging Face,
+``Hugging Face Model Hub,''
+2024. [Online]. Available: \url{https://huggingface.co/models}
+
+% --- Distributed & Edge Inference Systems ---
+\bibitem{llamacpp}
+G.~Gerganov \emph{et al.},
+``llama.cpp: Port of Facebook's LLaMA model in C/C++ (with RPC support),''
+GitHub repository, 2023. [Online]. Available: \url{https://github.com/ggml-org/llama.cpp}
+
+\bibitem{distributedllama}
+B.~Tadych,
+``Distributed Llama,''
+GitHub repository, 2024. [Online]. Available: \url{https://github.com/b4rtaz/distributed-llama}
+
+\bibitem{buschmann2025}
+P.~Buschmann \emph{et al.},
+``LLMs on Edge: Network Traffic Characteristics of Distributed Inference under the Loupe,''
+in \emph{Proceedings of the 2nd Workshop on Networks for AI Computing (NAIC)}, 2025.
+
+\bibitem{zhao2024}
+J.~Zhao \emph{et al.},
+``POSTER: LLM-PQ: Serving LLM on Heterogeneous Clusters with Phase-Aware Partition and Adaptive Quantization,''
+in \emph{Proceedings of the 29th ACM SIGPLAN Annual Symposium on Principles and Practice of Parallel Programming (PPoPP)}, 2024.
+
+\bibitem{zhang2024edgeshard}
+M.~Zhang, X.~Shen, J.~Cao, Z.~Cui, and S.~Jiang,
+``EdgeShard: Efficient LLM Inference via Collaborative Edge Computing,''
+\emph{IEEE Internet of Things Journal}, vol.~12, no.~10, pp.~13119--13131, 2025.
+
+% --- Optimization Techniques: Speculative Decoding & KV Cache ---
+\bibitem{leviathan2023fast}
+Y.~Leviathan, M.~Kalman, and Y.~Matias,
+``Fast Inference from Transformers via Speculative Decoding,''
+in \emph{Proceedings of the 40th International Conference on Machine Learning (ICML)}, PMLR 202, pp.~19274--19286, 2023.
+
+\bibitem{li2024surveykv}
+H.~Li, Y.~Li, A.~Tian, T.~Tang, Z.~Xu, X.~Chen, N.~Hu, W.~Dong, Q.~Li, and L.~Chen,
+``A Survey on Large Language Model Acceleration based on KV Cache Management,''
+\emph{arXiv preprint arXiv:2412.19442}, 2024.
+
+% --- Baseline Parallelism Literature ---
+\bibitem{shoeybi2019}
+M.~Shoeybi \emph{et al.},
+``Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism,''
+\emph{arXiv preprint arXiv:1909.08053}, 2019.
+
+\end{thebibliography}
+% =====================================================
+% Put your slides PDF in the project and adjust the file name.
+% \includepdf[pages=-, scale=0.85, pagecommand={}]{midterm_slides.pdf}
+
+\end{document}
