@@ -30,39 +30,31 @@ def save(fig, name):
     plt.close(fig)
     print("wrote", name)
 
-# ---------------------------------------------------------------- 1. scaling (decode / prefill)
-# single: A07; PP: A10/A09; TP stock: A06/A04; TP opt tied: A05/A03; TP opt untied: T02/U1 (3 thr), T03 (4 thr)
+# ---------------------------------------------------------------- 1. scaling (decode / prefill), 1-8 nodes
+# 2026-10-14 (4 Pis): single A07, PP A10/A09, TP stock A06/A04, TP direct A05/A03, TP untied T02/U1, 4 thr T03
+# 2026-10-21 (8 devices = 7 Pis + RK3588): TP untied S04 (busy-spin on) / F1 (GGML_RPC_NO_SPIN), stock T01, tied T02, PP P03
 # Distributed Llama: Table 1 of the mid-term report (Pred. tok/s)
-dec = {
-    "Single node (llama.cpp)": ([1], [1.84], C["single"], "o", "-"),
-    "Distributed Llama (baseline)": ([1, 2, 4], [1.97, 3.55, 5.81], C["dllama"], "D", ":"),
-    "llama.cpp TP, stock": ([1, 2, 4], [1.84, 2.86, 1.03], C["stock"], "x", "--"),
-    "llama.cpp TP, direct allreduce": ([1, 2, 4], [1.84, 3.00, 2.99], C["opt"], "s", "-"),
-    "llama.cpp TP, direct allreduce + untied": ([1, 2, 4], [1.84, 3.45, 4.85], C["untied"], "^", "-"),
-    "llama.cpp PP": ([1, 2, 4], [1.84, 1.88, 1.84], C["pp"], "v", "-"),
-}
-fig, ax = plt.subplots(figsize=(6.2, 3.8))
-for k, (x, y, c, m, ls) in dec.items():
-    if len(x) > 1:
-        ax.plot(x, y, color=c, marker=m, ls=ls, label=k, lw=1.8)
-ax.plot([4], [5.04], marker="*", ms=12, color=C["untied"], ls="none", label="  + 4 threads per rpc-server")
-ax.plot([1, 2, 4], [1.84, 3.68, 7.36], color="k", lw=0.8, ls=(0, (1, 3)), label="Ideal linear")
-ax.set_xticks([1, 2, 4]); ax.set_xlabel("Number of Raspberry Pi nodes"); ax.set_ylabel("Decode throughput (tokens/s)")
-ax.set_ylim(0, 7.8); ax.legend(fontsize=8, loc="upper left")
+fig, ax = plt.subplots(figsize=(6.6, 4.0))
+ax.plot([1, 2, 4], [1.97, 3.55, 5.81], color=C["dllama"], marker="D", ls=":", label="Distributed Llama (baseline)", lw=1.8)
+ax.plot([1, 2, 4, 8], [1.84, 2.86, 1.03, 0.41], color=C["stock"], marker="x", ls="--", label="llama.cpp TP, stock", lw=1.8)
+ax.plot([1, 2, 4, 8], [1.84, 3.00, 2.99, 1.42], color=C["opt"], marker="s", label="TP, direct allreduce (tied model)", lw=1.8)
+ax.plot([1, 2, 4, 8], [1.84, 3.45, 4.85, 1.62], color=C["untied"], marker="^", ls="-.", alpha=0.6, label="TP, direct allreduce + untied (head busy-spin)", lw=1.5)
+ax.plot([1, 2, 4, 8], [1.84, 3.46, 5.02, 6.34], color=C["untied"], marker="^", label="TP, direct allreduce + untied + no-spin", lw=2.2)
+ax.plot([1, 2, 4, 8], [1.84, 1.88, 1.84, 2.00], color=C["pp"], marker="v", label="llama.cpp PP", lw=1.8)
+ax.plot([1, 2, 4, 8], [1.84, 3.68, 7.36, 14.72], color="k", lw=0.8, ls=(0, (1, 3)), label="Ideal linear")
+ax.axvspan(6, 9, color="#f2e8d5", alpha=0.5, lw=0); ax.text(7.2, 7.75, "8 = 7 Pis + RK3588", ha="center", fontsize=7.5, color="#7a5c2e")
+ax.set_xscale("log", base=2); ax.set_xticks([1, 2, 4, 8]); ax.set_xticklabels(["1", "2", "4", "8"]); ax.set_xlim(0.85, 9)
+ax.set_xlabel("Number of nodes"); ax.set_ylabel("Decode throughput (tokens/s)"); ax.set_ylim(0, 8.2); ax.legend(fontsize=7.5, loc="upper left")
 save(fig, "decode_scaling")
 
-pre = {
-    "llama.cpp TP, stock": ([1, 2, 4], [4.14, 5.93, 5.77], C["stock"], "x", "--"),
-    "llama.cpp TP, direct allreduce": ([1, 2, 4], [4.14, 5.94, 9.68], C["opt"], "s", "-"),
-    "llama.cpp TP, direct allreduce + untied": ([1, 2, 4], [4.14, 5.98, 10.07], C["untied"], "^", "-"),
-    "llama.cpp PP": ([1, 2, 4], [4.14, 4.12, 4.01], C["pp"], "v", "-"),
-}
-fig, ax = plt.subplots(figsize=(6.2, 3.4))
-for k, (x, y, c, m, ls) in pre.items():
-    ax.plot(x, y, color=c, marker=m, ls=ls, label=k, lw=1.8)
-ax.plot([4], [12.57], marker="*", ms=12, color=C["untied"], ls="none", label="  + 4 threads per rpc-server")
-ax.set_xticks([1, 2, 4]); ax.set_xlabel("Number of Raspberry Pi nodes"); ax.set_ylabel("Prefill throughput (tokens/s)")
-ax.set_ylim(0, 14); ax.legend(fontsize=8, loc="upper left")
+fig, ax = plt.subplots(figsize=(6.6, 3.6))
+ax.plot([1, 2, 4, 8], [4.14, 5.93, 5.77, 3.15], color=C["stock"], marker="x", ls="--", label="llama.cpp TP, stock", lw=1.8)
+ax.plot([1, 2, 4, 8], [4.14, 5.94, 9.68, 12.34], color=C["opt"], marker="s", label="TP, direct allreduce (tied model)", lw=1.8)
+ax.plot([1, 2, 4, 8], [4.14, 5.98, 12.57, 16.24], color=C["untied"], marker="^", label="TP, direct allreduce + untied + no-spin", lw=2.2)
+ax.plot([1, 2, 4, 8], [4.14, 4.12, 4.01, 4.06], color=C["pp"], marker="v", label="llama.cpp PP", lw=1.8)
+ax.axvspan(6, 9, color="#f2e8d5", alpha=0.5, lw=0)
+ax.set_xscale("log", base=2); ax.set_xticks([1, 2, 4, 8]); ax.set_xticklabels(["1", "2", "4", "8"]); ax.set_xlim(0.85, 9)
+ax.set_xlabel("Number of nodes"); ax.set_ylabel("Prefill throughput (tokens/s)"); ax.set_ylim(0, 18); ax.legend(fontsize=7.5, loc="upper left")
 save(fig, "prefill_scaling")
 
 # ---------------------------------------------------------------- 2. ablation at 4 nodes
@@ -190,38 +182,151 @@ ax.set_xticks(range(len(het))); ax.set_xticklabels([h[0] for h in het], fontsize
 ax.set_title("(b) Mixing the RK3588 board with Pis (hatched: weighted split)", fontsize=9); ax.set_ylim(0, 14); ax.grid(axis="x")
 save(fig, "heterogeneous")
 
-# ---------------------------------------------------------------- 7. performance model (Eq. 7) vs measurement, projection to 8 nodes
+# ---------------------------------------------------------------- 7. performance model (Eq. model) vs measurement at 1-8 nodes
 T1, TO = 1000 / 1.84, 83.0          # single-node ms/token; output layer (trace, 80-85 ms)
 TL = T1 - TO
-t_round, n_sync = 0.30, 56           # ms per allreduce round incl. jitter/waiting (fit at N=4 untied: ~34 ms / (56*2))
-def host(N): return {1: 0, 2: 8, 4: 33, 8: 45}[N]   # idle time waiting for the head (trace); N=8 extrapolated
+t_round, n_sync = 0.30, 56           # ms per allreduce round incl. waiting (fit at 4 nodes)
+def host(N): return {1: 0, 2: 8, 4: 33, 8: 15}[N]   # idle time waiting for the head, from the traces (8 nodes: no-spin run F1)
 def model(N, untied=True):
     import math
     out = TO / N if untied else TO
     return TL / N + out + (n_sync * t_round * math.log2(N) if N > 1 else 0) + host(N)
 Ns = [1, 2, 4, 8]
-fig, ax = plt.subplots(figsize=(5.6, 3.4))
+fig, ax = plt.subplots(figsize=(5.8, 3.5))
 ax.plot(Ns, [1000 / model(n, True) for n in Ns], color=C["untied"], ls="--", marker="^", mfc="none", label="model, untied (Eq. 7)")
-ax.plot(Ns, [1000 / model(n, False) for n in Ns], color=C["opt"], ls="--", marker="s", mfc="none", label="model, tied output")
-ax.plot([1, 2, 4], [1.84, 3.45, 4.85], color=C["untied"], marker="^", ls="none", ms=8, label="measured, untied")
-ax.plot([1, 2, 4], [1.84, 3.00, 2.99], color=C["opt"], marker="s", ls="none", ms=8, label="measured, tied")
-ax.set_xticks(Ns); ax.set_xlabel("Number of Raspberry Pi nodes"); ax.set_ylabel("Decode throughput (tokens/s)")
+ax.plot([1, 2, 4, 8], [1.84, 3.46, 5.02, 6.34], color=C["untied"], marker="^", ls="none", ms=8, label="measured, untied + no-spin")
+ax.plot([8], [1.62], color=C["stock"], marker="X", ls="none", ms=9, label="measured, 8 nodes with busy-spin")
+ax.set_xticks(Ns); ax.set_xlabel("Number of nodes"); ax.set_ylabel("Decode throughput (tokens/s)")
 ax.set_ylim(0, 8); ax.legend(fontsize=8, loc="upper left")
-ax.annotate("projection", xy=(8, 1000 / model(8)), xytext=(6.3, 7.2), fontsize=8, arrowprops=dict(arrowstyle="->", lw=0.8))
 save(fig, "perf_model")
-print("model ms/token:", {n: (round(model(n, True), 1), round(model(n, False), 1)) for n in Ns})
+print("model ms/token:", {n: round(model(n, True), 1) for n in Ns})
 
-# ---------------------------------------------------------------- 8. topology of the lab cluster
-fig, ax = plt.subplots(figsize=(6.4, 3.4)); ax.axis("off"); ax.set_xlim(0, 10); ax.set_ylim(0, 6)
-ax.add_patch(FancyBboxPatch((3.1, 2.6), 3.8, 0.8, boxstyle="round,pad=0.05", fc="#dbe9f6", ec="#1f77b4"))
-ax.text(5, 3.0, "Netgear M4300-28G\n10.77.0.1 (DHCP, MAC bindings)", ha="center", va="center", fontsize=8)
-nodes = [(1.1, 5.2, "rex  .4\nPi 400, head"), (3.7, 5.4, "finn  .2\nPi 400"), (6.3, 5.4, "han  .3\nPi 400"),
-         (8.9, 5.2, "luthen  .5\nPi 4B"), (1.6, 0.7, "laptop  .100\n(controls via ssh)"), (5.0, 0.5, "cat  .6\nLubanCat-5 (RK3588)"),
-         (8.3, 0.7, "more Pis\n.101-.199 (DHCP)")]
+# ---------------------------------------------------------------- 8. topology of the lab cluster (8 devices)
+fig, ax = plt.subplots(figsize=(7.0, 3.6)); ax.axis("off"); ax.set_xlim(-0.3, 11); ax.set_ylim(0, 6)
+ax.add_patch(FancyBboxPatch((3.6, 2.6), 3.8, 0.8, boxstyle="round,pad=0.05", fc="#dbe9f6", ec="#1f77b4"))
+ax.text(5.5, 3.0, "Netgear M4300-28G\nGigabit switch", ha="center", va="center", fontsize=8)
+nodes = [(0.9, 5.2, "rex  .4\nPi 400, head"), (3.0, 5.4, "finn  .2\nPi 400"), (5.0, 5.5, "han  .3\nPi 400"),
+         (7.0, 5.4, "cassian  .7\nPi 400"), (9.6, 5.2, "laptop  .100\n(control, ssh)"),
+         (0.9, 0.8, "luthen  .5\nPi 4B"), (3.0, 0.6, "jarjar  .8\nPi 4B"), (5.0, 0.5, "crosshair  .9\nPi 4B"),
+         (7.4, 0.6, "cat  .6\nLubanCat-5 (RK3588)")]
 for x, y, t in nodes:
-    ax.plot([x, 5], [y - 0.35 if y > 3 else y + 0.35, 3.4 if y > 3 else 2.6], color="#555", lw=1)
-    ec = "#2ca02c" if "Pi" in t and "laptop" not in t else ("#8c564b" if "cat" in t else "#7f7f7f")
-    ax.add_patch(FancyBboxPatch((x - 1.05, y - 0.35), 2.1, 0.7, boxstyle="round,pad=0.04", fc="white", ec=ec))
-    ax.text(x, y, t, ha="center", va="center", fontsize=7.5)
-ax.text(9.9, 2.0, "1 Gbit/s Ethernet\nstar topology\nRTT 0.05-0.15 ms", ha="right", fontsize=7.5, color="#555")
+    ax.plot([x, 5.5], [y - 0.35 if y > 3 else y + 0.35, 3.4 if y > 3 else 2.6], color="#555", lw=1)
+    ec = "#8c564b" if "cat" in t else ("#7f7f7f" if "laptop" in t else "#2ca02c")
+    ax.add_patch(FancyBboxPatch((x - 0.95, y - 0.35), 1.9, 0.7, boxstyle="round,pad=0.04", fc="white", ec=ec))
+    ax.text(x, y, t, ha="center", va="center", fontsize=7.2)
+ax.text(10.9, 2.0, "1 Gbit/s Ethernet\nstar topology\nRTT 0.06-0.24 ms\nTCP 940 Mbit/s", ha="right", fontsize=7.2, color="#555")
 save(fig, "topology")
+
+# ---------------------------------------------------------------- 9. device performance (2026-10-21 measurements)
+# membw (tools/membw.c, 128 MB arrays, best of 8): Pi 400 3.7-5.3 GB/s, Pi 4B 4.0-5.3 GB/s, RK3588 21-23 GB/s
+dev = [("Raspberry Pi 400\n(4x A72 1.8 GHz)", 3.9, 5.27, 1.84), ("Raspberry Pi 4B\n(4x A72 1.8 GHz)", 4.1, 5.27, 1.84),
+       ("LubanCat-5 RK3588\n(4x A76 2.3 GHz)", 22.1, 21.6, 12.28)]
+fig, axes = plt.subplots(1, 2, figsize=(7.6, 3.1))
+ax = axes[0]; x = range(3)
+ax.bar([i - 0.18 for i in x], [d[1] for d in dev], 0.35, color="#4c72b0", label="4 threads (copy/triad avg.)")
+ax.bar([i + 0.18 for i in x], [d[2] for d in dev], 0.35, color="#9ecae1", label="1 thread (copy)")
+for i, d in enumerate(dev):
+    ax.text(i - 0.18, d[1] + 0.4, f"{d[1]:.1f}", ha="center", fontsize=7.5); ax.text(i + 0.18, d[2] + 0.4, f"{d[2]:.1f}", ha="center", fontsize=7.5)
+ax.set_xticks(list(x)); ax.set_xticklabels([d[0] for d in dev], fontsize=7); ax.set_ylabel("Memory bandwidth (GB/s)")
+ax.set_title("(a) Measured memory bandwidth", fontsize=9); ax.legend(fontsize=7, loc="upper left"); ax.set_ylim(0, 27); ax.grid(axis="x")
+ax = axes[1]
+bw_used = [d[3] * 1.92 for d in dev]   # decode reads ~1.92 GB of weights per token
+ax.bar(x, [d[3] for d in dev], 0.55, color=["#2ca02c", "#2ca02c", C["cat"]])
+for i, d in enumerate(dev):
+    ax.text(i, d[3] + 0.3, f"{d[3]:.2f} tok/s\n= {bw_used[i]:.1f} GB/s", ha="center", fontsize=7.2)
+ax.set_xticks(list(x)); ax.set_xticklabels([d[0] for d in dev], fontsize=7); ax.set_ylabel("Single-device decode (tokens/s)")
+ax.set_title("(b) Single-device decode and implied weight traffic", fontsize=9); ax.set_ylim(0, 16); ax.grid(axis="x")
+save(fig, "device_performance")
+
+# ---------------------------------------------------------------- 10. per-node resource utilization in decode (monitoring)
+def mon(tag):
+    d = glob.glob(os.path.join(REPO, "logs/mon", f"*_{tag}_1021_*"))
+    rows = [r for r in csv.DictReader(open(sorted(d)[-1] + "/mon_summary.csv")) if r["phase"] == "decode"]
+    return {r["node"]: r for r in rows}
+ORDER8 = ["rex_10.77.0.4", "finn_10.77.0.2", "pi_10.77.0.3", "cassian_10.77.0.7", "pi_10.77.0.5", "jarjar_10.77.0.8", "crosshair_10.77.0.9", "cat_10.77.0.6"]
+NAMES8 = ["rex\n(head)", "finn", "han", "cassian", "luthen", "jarjar", "cross-\nhair", "cat"]
+runs = [("TP 2", "S02_tp2"), ("TP 4", "F2_tp4_nospin"), ("TP 8, busy-spin", "S04_tp8"), ("TP 8, no-spin", "F1_tp8_nospin"), ("PP 8", "P03_pp8")]
+fig, axes = plt.subplots(1, 2, figsize=(8.4, 3.3), gridspec_kw={"width_ratios": [1.6, 1]})
+ax = axes[0]; W = 0.16
+cols = ["#9ecae1", "#6baed6", C["stock"], C["untied"], C["pp"]]
+for j, (lab, tag) in enumerate(runs):
+    m = mon(tag); vals = [float(m[n]["cpu_busy"]) if n in m else 0 for n in ORDER8]
+    ax.bar([i + (j - 2) * W for i in range(8)], vals, W, color=cols[j], label=lab)
+ax.set_xticks(range(8)); ax.set_xticklabels(NAMES8, fontsize=7); ax.set_ylabel("CPU busy in decode (%)"); ax.set_ylim(0, 105)
+ax.set_title("(a) CPU utilization per device", fontsize=9); ax.legend(fontsize=7, ncol=3, loc="upper right"); ax.grid(axis="x")
+ax = axes[1]
+lab = ["TP 2", "TP 4", "TP 8\nspin", "TP 8\nno-spin", "PP 8"]
+kb = []; pk = []; mbps = []
+for _, tag in runs:
+    m = mon(tag); w = [n for n in ORDER8[1:7] if n in m] or [n for n in m if not n.startswith("rex")]
+    kb.append(st.mean(float(m[n]["kB_per_token"]) for n in w)); pk.append(st.mean(float(m[n]["pkts_per_token"]) for n in w))
+    mbps.append(st.mean(float(m[n]["rx_MBps"]) + float(m[n]["tx_MBps"]) for n in w))
+ax.bar(range(5), [k / 1000 for k in kb], 0.55, color=cols)
+for i in range(5):
+    ax.text(i, kb[i] / 1000 + 0.08, f"{kb[i]/1000:.1f} MB\n{pk[i]:.0f} pkts\n{mbps[i]*8:.0f} Mbit/s", ha="center", fontsize=6.5)
+ax.set_xticks(range(5)); ax.set_xticklabels(lab, fontsize=7); ax.set_ylabel("Worker traffic per token (MB, rx+tx)"); ax.set_ylim(0, 5.8)
+ax.set_title("(b) Network per worker", fontsize=9); ax.grid(axis="x")
+save(fig, "resources_decode")
+
+# ---------------------------------------------------------------- 11. CPU time series during the 8-node runs (busy-spin vs no-spin)
+def series(tag, node):
+    d = sorted(glob.glob(os.path.join(REPO, "logs/mon", f"*_{tag}_1021_*")))[-1]
+    off = {}   # clock offsets (only recorded since the runs after 16:15; the earlier runs used freshly synced clocks)
+    if os.path.exists(d + "/offsets.txt"):
+        for line in open(d + "/offsets.txt"):
+            k, v = line.split()
+            if k != "__head__": off[k] = int(v)
+    rows = [r for r in csv.DictReader(open(f"{d}/{node}.csv"))]
+    t, c = [], []
+    for a, b in zip(rows, rows[1:]):
+        try:
+            tot = lambda r: sum(int(r[k]) for k in ("user", "nice", "system", "idle", "iowait", "irq", "softirq"))
+            dt = tot(b) - tot(a)
+            t.append((int(b["ts_ms"]) - off.get(node, 0)) / 1000); c.append(100 * (1 - (int(b["idle"]) + int(b["iowait"]) - int(a["idle"]) - int(a["iowait"])) / dt) if dt else 0)
+        except (ValueError, KeyError):
+            pass
+    ph = [l.split(" ", 1) for l in open(d + "/phases.txt") if "generation run 1/" in l]
+    hoff = off.get("rex_10.77.0.4", 0)
+    g0 = (int(ph[0][0]) - hoff) / 1000 if ph else t[0]
+    return [x - g0 for x in t], c
+fig, axes = plt.subplots(1, 2, figsize=(8.2, 2.9), sharey=True)
+for ax, (title, tag) in zip(axes, (("8 nodes, busy-spin (1.62 tok/s)", "S04_tp8"), ("8 nodes, no-spin (6.34 tok/s)", "F1_tp8_nospin"))):
+    for node, lab, col in (("rex_10.77.0.4", "rex (head)", C["stock"]), ("finn_10.77.0.2", "finn (Pi 400)", "#4c72b0"),
+                           ("jarjar_10.77.0.8", "jarjar (Pi 4B)", "#6baed6"), ("cat_10.77.0.6", "cat (RK3588)", C["cat"])):
+        t, c = series(tag, node)
+        ax.plot(t, c, label=lab, color=col, lw=1.2)
+    ax.axvline(0, color="k", lw=0.8, ls=":"); ax.text(0.5, 101, "decode starts", fontsize=7)
+    ax.set_xlim(-20, 40); ax.set_ylim(0, 108); ax.set_xlabel("Time from first measured decode run (s)", fontsize=8.5); ax.set_title(title, fontsize=9)
+axes[0].set_ylabel("CPU busy (%)"); axes[1].legend(fontsize=7, loc="lower right")
+save(fig, "cpu_timeline_tp8")
+
+# ---------------------------------------------------------------- 12. trace breakdown at 8 nodes (busy-spin vs no-spin)
+spin8 = trace_breakdown("tp_8n_opt_T04_tp8_trace_1021_163217")
+nospin8 = trace_breakdown("tp_8n_opt_F1_tp8_nospin_1021_165251")
+fig, axes = plt.subplots(1, 2, figsize=(8.2, 3.2), sharey=True)
+for ax, (title, d) in zip(axes, (("Busy-spin (default): 1.59 tok/s", spin8), ("GGML_RPC_NO_SPIN=1: 6.34 tok/s", nospin8))):
+    bottom = [0] * 8
+    for j, (pn, col) in enumerate(parts):
+        vals = [d[n][j] if n in d else 0 for n in ORDER8]
+        ax.bar(range(8), vals, bottom=bottom, color=col, width=0.62, label=pn)
+        bottom = [b + v for b, v in zip(bottom, vals)]
+    for i, b in enumerate(bottom):
+        ax.text(i, b + 8, f"{b:.0f}", ha="center", fontsize=6.5)
+    ax.set_xticks(range(8)); ax.set_xticklabels(NAMES8, fontsize=6.8); ax.set_title(title, fontsize=9); ax.grid(axis="x")
+axes[0].set_ylabel("Time per decode token (ms)"); axes[1].legend(fontsize=7, loc="upper right")
+save(fig, "trace_breakdown_tp8")
+for nm, d in (("spin8", spin8), ("nospin8", nospin8)):
+    print(nm, {k: [round(x, 1) for x in v] for k, v in d.items()})
+
+# ---------------------------------------------------------------- 13. head bottleneck experiments
+hb = [("4 nodes\nhead rex", 4.72, "#9ecae1"), ("4 nodes\nhead cat", 5.31, "#9ecae1"), ("4 nodes\nno-spin", 5.02, C["untied"]),
+      ("8 nodes\nhead rex", 1.62, "#fcae91"), ("8 nodes\nrex rpc 2 thr", 1.63, "#fcae91"), ("8 nodes\nhead cat", 0.72, "#fcae91"),
+      ("8 nodes\nno-spin", 6.34, C["untied"])]
+fig, ax = plt.subplots(figsize=(6.8, 3.0))
+bars = ax.bar(range(len(hb)), [h[1] for h in hb], color=[h[2] for h in hb], width=0.62)
+for b_, h in zip(bars, hb):
+    ax.text(b_.get_x() + b_.get_width() / 2, h[1] + 0.1, f"{h[1]:.2f}", ha="center", fontsize=8)
+ax.axvline(2.5, color="#999", lw=0.8)
+ax.set_xticks(range(len(hb))); ax.set_xticklabels([h[0] for h in hb], fontsize=7.5); ax.set_ylabel("Decode throughput (tokens/s)")
+ax.set_ylim(0, 7.3); ax.grid(axis="x")
+save(fig, "head_bottleneck")

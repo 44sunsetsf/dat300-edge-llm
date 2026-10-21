@@ -1,0 +1,31 @@
+mode=tp sm=tensor nn=4 build=opt reps=2 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 cassian@10.77.0.7
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 1 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.7:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 每 token 流量（kB），按上面节点顺序，每台两个数：收 发
+kB/token: 1636 1642 1482 1454 1481 1460 1481 1524 
+## 速度（-p 32 -n 30 -r 2）
+| model                          |       size |     params | backend    | ngl | threads |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       1 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |         12.25 ± 0.05 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 |       1 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          4.75 ± 0.01 |
+## 资源采集（每台设备，按阶段；CPU 忙% = 1 - 空闲；网络是这台设备网卡的收发）
+
+## prefill（5.2 秒）
+设备                         CPU忙%    用户%    内核%    内存用MB    进程MB   收MB/s   发MB/s    收包/s    发包/s    包均B    温度
+cassian_10.77.0.7           82.7   80.5    2.3      704     488    9.14    8.81    6227    5973   1471  45.8
+finn_10.77.0.2              80.6   78.1    2.5      863     488    9.10    8.82    6180    6001   1470  45.8
+pi_10.77.0.3                82.5   80.4    2.1      681     488    9.01    8.73    6101    5973   1469  43.8
+rex_10.77.0.4               83.3   81.2    2.1      775     880    8.86    9.67    6056    6565   1468  48.7
+
+## decode（12.9 秒）
+设备                         CPU忙%    用户%    内核%    内存用MB    进程MB   收MB/s   发MB/s    收包/s    发包/s    包均B    温度
+cassian_10.77.0.7           76.4   73.4    3.0      681     495    7.19    7.46    6768    5793   1167  45.3  每token 2705 kB / 2319 包
+finn_10.77.0.2              73.3   70.2    3.1      859     494    7.22    7.47    6890    5800   1158  45.3  每token 2714 kB / 2343 包
+pi_10.77.0.3                77.8   74.7    3.1      685     493    7.23    7.49    6915    5742   1163  43.3  每token 2839 kB / 2442 包
+rex_10.77.0.4               88.5   83.4    5.1      774     886    8.78    8.03    6917   10113    987  48.7  每token 3243 kB / 3285 包
+
+明细：/Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/mon/tp_4n_opt_D1_tp4_headt1_1021_161453/mon_summary.csv
+decode 阶段 CPU 忙%（按节点顺序）：89/73/78/76
+温度/降频：44.3C,0x0 40.4C,0x0 38.9C,0x0 39.9C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=12.25 decode=4.75 head_kb=1636/1642 cpu=89/73/78/76

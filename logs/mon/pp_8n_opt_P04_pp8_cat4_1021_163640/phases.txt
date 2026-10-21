@@ -1,0 +1,14 @@
+1792593417185 llama-bench: benchmark 1/2: starting
+1792593439853 llama-bench: benchmark 1/2: warmup prompt run
+1792593446205 llama-bench: benchmark 1/2: prompt run 1/2
+1792593452613 llama-bench: benchmark 1/2: prompt run 2/2
+1792593459044 | model                          |       size |     params | backend    | ngl | dev          | ts           |            test |                  t/s |
+1792593459052 | ------------------------------ | ---------: | ---------: | ---------- | --: | ------------ | ------------ | --------------: | -------------------: |
+1792593459059 | llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1/RPC2/RPC3/RPC4/RPC5/RPC6/RPC7 | 1.00/1.00/1.00/1.00/1.00/1.00/1.00/4.00 |            pp32 |          4.98 ± 0.01 |
+1792593459065 llama-bench: benchmark 2/2: starting
+1792593459137 llama-bench: benchmark 2/2: warmup generation run
+1792593459598 llama-bench: benchmark 2/2: generation run 1/2
+1792593472394 llama-bench: benchmark 2/2: generation run 2/2
+1792593485801 | llama 3B Q4_0                  |   1.78 GiB |     3.21 B | RPC        |  -1 | RPC0/RPC1/RPC2/RPC3/RPC4/RPC5/RPC6/RPC7 | 1.00/1.00/1.00/1.00/1.00/1.00/1.00/4.00 |            tg30 |          2.29 ± 0.08 |
+1792593486081 
+1792593486084 build: a8cd154 (4)

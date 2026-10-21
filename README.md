@@ -13,21 +13,22 @@ DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，
   - 改进版的 commit 写在 [`LLAMA_COMMIT`](LLAMA_COMMIT)；
   - 对照用的原版写在 [`LLAMA_STOCK_COMMIT`](LLAMA_STOCK_COMMIT)。
 
-## 目前的结论（2026-10-14 交换机 + 4 台 Pi 实测，详见 [`docs/实验报告_1014.md`](docs/实验报告_1014.md)）
+## 目前的结论（2026-10-21，8 台设备实测，详见 [`docs/实验报告_1021.md`](docs/实验报告_1021.md) 和英文报告 [`report/main.tex`](report/main.tex)）
 
-| 4 台 Pi | prefill | decode (tok/s) |
+| Llama-3.2-3B Q4_0 | prefill | decode (tok/s) |
 |---|---|---|
-| 单机 | 4.14 | 1.84 |
-| 原版 llama.cpp TP | 5.77 | 1.03 |
-| **改进版 TP + untied 模型 + 4 线程** | **12.57** | **5.04** |
-| PP（任何配置的单请求） | ≈4.1 | ≈1.85 |
+| 单台 Pi | 4.14 | 1.84 |
+| 原版 llama.cpp TP，4 / 8 台 | 5.77 / 3.15 | 1.03 / 0.41 |
+| **改进版 TP，4 台（Pi）** | **12.57** | **5.02** |
+| **改进版 TP，8 台（7 Pi + RK3588）** | **16.24** | **6.34** |
+| PP（任何台数的单请求） | ≈4.1 | 1.84–2.00 |
 
-1. **TP 瓶颈①：原版 4 台以上同步都经过主控中转** → 改 llama.cpp 让 Pi 之间直接 allreduce：1.03 → 2.99。
-2. **TP 瓶颈②：输出层没有被切分**（Llama-3.2 的输出层和嵌入层共用矩阵，llama.cpp 让每台都完整算一遍，每台 80 ms/token）→ `scripts/untie_output.py` 补一个独立的 `output.weight`，结果完全不变：2.99 → 4.85，再改 4 线程 → 5.04。
-3. **PP**：单请求永远和单机一样快（原理决定）。切块流水线 prefill +12%，多请求 + 小块流水线吞吐 +29%（唯一超过单机的 PP 配置）。在 Pi 集群上 TP 全面优于 PP。
-4. **网络**：交换机没开 DHCP 导致 Pi 每 45 秒掉线一次 → 交换机 DHCP + 按 MAC 绑定 + Pi 固定 IP（[`docs/网络配置.md`](docs/网络配置.md)）。
-5. **异构**：RK3588（LubanCat-5）用 A76 编译、绑大核后单机 decode 12.3，比 4 台 Pi 集群还快；和 Pi 混用时必须用 `-ts` 按速度分配（TP 2 台 3.24 → 7.00）。
-6. 在交换机上，"每 token 同步 56 次"的延迟不是瓶颈（ag 算法把轮数减半也没变快）。
+1. **单机瓶颈是内存带宽**：每生成一个 token 读一遍 1.92 GB 权重，单台 Pi 达到实测带宽的 70–85%。
+2. **TP 瓶颈①：原版 4 台以上同步都经过主控中转** → 改 llama.cpp 让 Pi 之间直接 allreduce：4 台 1.03 → 2.99。
+3. **TP 瓶颈②：输出层没有被切分**（tied embedding）→ `scripts/untie_output.py` 补独立的 `output.weight`，结果完全不变：2.99 → 4.85。
+4. **TP 瓶颈③：8 台时主控 CPU 被 RPC 分发线程的忙等占满**（主控 94%、其他 15%，每 token 每台空等 470 ms）→ `GGML_RPC_NO_SPIN=1`：8 台 1.62 → 6.34。
+5. **网络不是瓶颈**：每台资源采集显示 8 台时每台每 token 约 4 MB、最多 233 Mbit/s（链路 940 Mbit/s），而且速度变化 3.9 倍时网络量不变。
+6. **PP** 单请求永远和单机一样快；在 Pi 集群上 TP 全面优于 PP。**异构**：RK3588 用 A76 编译后单机 12.3 tok/s，混用时要按速度设 `-ts`。
 
 ## 最快上手
 
@@ -54,6 +55,8 @@ python3 scripts/summarize.py                     # 结果表
 | `scripts/hosts.env.example` | Pi 列表模板。复制成 `hosts.env` 后填写，`hosts.env` 不提交 |
 | `scripts/add_keys.sh` | 把控制机的 SSH 公钥装到每台 Pi |
 | `scripts/setup_pi.sh` | 并行安装改进版和原版 llama.cpp（`--model` 准备模型，`--download-only` 只下载安装包） |
+| `scripts/monitor.sh`、`tools/mon.c`、`scripts/analyze_mon.py` | 每台设备的 CPU / 内存 / 网络包采集（run_bench 默认开启）和按阶段分析 |
+| `tools/membw.c` | 内存带宽测试（设备性能指标） |
 | `scripts/check_cluster.sh` | 体检：型号、系统、频率、内存、温度、降频、网口、版本、残留进程、ping |
 | `scripts/chat.sh` | 用集群直接对话（默认 TP + 改进版 + 3 线程） |
 | `scripts/run_bench.sh` | 测一组：速度、每 token 流量、CPU、温度。参数见脚本开头注释 |

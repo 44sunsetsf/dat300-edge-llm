@@ -1,0 +1,42 @@
+mode=tp sm=tensor nn=4 build=opt reps=1 rpc_t=4 rpc_t_head=4 env='' extra='' netem_ms=0
+节点：rex@10.77.0.4 finn@10.77.0.2 pi@10.77.0.3 cassian@10.77.0.7
+版本：a8cd154660c660ac808fa0d4d76e9ca6d6ab2d36
+llama-bench -m ~/exp/models/Llama-3.2-3B-Instruct-Q4_0-untied.gguf -t 4 --rpc 10.77.0.4:50052,10.77.0.2:50052,10.77.0.3:50052,10.77.0.7:50052 -dev RPC0/RPC1/RPC2/RPC3 -sm tensor 
+## 速度（-p 32 -n 30 -r 1）
+| model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1/RPC2/RPC3 |            pp32 |         12.40 ± 0.00 |
+| llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1/RPC2/RPC3 |            tg30 |          4.52 ± 0.00 |
+## 资源采集（每台设备，按阶段；CPU 忙% = 1 - 空闲；网络是这台设备网卡的收发）
+
+## prefill（2.6 秒）
+设备                         CPU忙%    用户%    内核%    内存用MB    进程MB   收MB/s   发MB/s    收包/s    发包/s    包均B    温度
+cassian_10.77.0.7           85.2   83.5    1.8      690     488    8.99    9.00    6106    6180   1464  44.8
+finn_10.77.0.2              83.2   81.7    1.5      856     488    9.03    9.01    6330    6100   1451  45.8
+pi_10.77.0.3                84.7   83.2    1.5      702     488    9.02    9.02    6130    6122   1473  42.4
+rex_10.77.0.4               84.9   83.8    1.2      755     880    8.86    8.87    5991    6158   1459  49.2
+
+## decode（6.9 秒）
+设备                         CPU忙%    用户%    内核%    内存用MB    进程MB   收MB/s   发MB/s    收包/s    发包/s    包均B    温度
+cassian_10.77.0.7           74.7   71.5    3.2      696     494    6.86    7.10    6507    5466   1166  45.3  每token 2573 kB / 2207 包
+finn_10.77.0.2              70.2   66.3    3.9      851     494    6.80    7.06    6531    5503   1152  45.3  每token 2324 kB / 2018 包
+pi_10.77.0.3                75.1   71.7    3.4      704     494    6.87    7.11    6529    5428   1169  42.8  每token 2578 kB / 2205 包
+rex_10.77.0.4               86.5   80.9    5.6      744     887    8.34    7.61    6539    9738    980  48.7  每token 2943 kB / 3003 包
+
+明细：/Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/mon/tp_4n_opt_T05_tp4_trace_1021_163333/mon_summary.csv
+decode 阶段 CPU 忙%（按节点顺序）：87/70/75/75
+温度/降频：43.8C,0x0 39.9C,0x0 38.4C,0x0 38.9C,0x0 
+RESULT mode=tp nn=4 build=opt rpc_t=4 rpc_t_head=4 env= extra= netem_ms=0 prefill=12.40 decode=4.52 head_kb=- cpu=87/70/75/75
+每台 Pi：平均每个 decode token 的时间拆分（单位 ms；decode = 每次 allreduce 字节数最小的那些段）
+
+节点                     token数      总时间       计算       同步     其中网络     本地加     收发数据     空等主控     同步次数
+cassian_10.77.0.7          30    222.8    147.5     48.7     46.8     0.4      1.0     24.1       56
+finn_10.77.0.2             30    223.6    138.3     56.6     54.9     0.3      1.2     25.4       56
+pi_10.77.0.3               30    222.8    147.7     48.9     47.1     0.3      1.1     23.8       56
+rex_10.77.0.4              30    223.3    162.4     36.2     34.5     0.3      1.1     21.8       56
+
+说明：
+- 总时间 ≈ 计算 + 同步 + 收发数据 + 空等主控。1000 ÷ 总时间 ≈ decode 速度（tok/s）。
+- 同步里的"网络"包括等对方 Pi 算完：如果某台 Pi 的网络时间明显比别人短，说明大家都在等它（它最慢）。
+- 空等主控：rpc-server 没事做、在等主控发命令的时间（主控在采样、取 logits、调度）。
+明细已写到 /Users/zhangyunfan/chalmers courses/第二年/p1/DAT300/dat300-edge-llm/logs/trace/tp_4n_opt_T05_tp4_trace_1021_163333/segments.csv 和 allreduce.csv。

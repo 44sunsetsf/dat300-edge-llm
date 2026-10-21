@@ -1,0 +1,10 @@
+CMAKE_BUILD_TYPE=Release
+[212/212] Linking CXX executable bin/llama-cli
+已生成 dist/llama-72578f5-linux-arm64.tar.gz（ 31M）
+https://github.com/44sunsetsf/llama.cpp/releases/tag/dat300-72578f5
+已发布 dat300-72578f5
+CMAKE_BUILD_TYPE=Release
+[213/213] Linking CXX executable bin/llama-cli
+已生成 dist/llama-72578f5-linux-arm64-bookworm.tar.gz（ 32M）
+已发布 dat300-72578f5
+CMAKE_BUILD_TYPE=Release

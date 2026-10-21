@@ -1,0 +1,3 @@
+phase,node,dt,cpu_busy,cpu_user,cpu_sys,mem_used_mb,proc_rss_mb,rx_MBps,tx_MBps,rx_pps,tx_pps,avg_pkt_B,temp_max,rx_bytes,tx_bytes,pkts,kB_per_token,pkts_per_token
+prefill,rex_10.77.0.4,14.076,99.947,99.822,0.124,261.297,2230.453,0.0,0.0,0.213,0.071,148.75,50.634,429,166,4,,
+decode,rex_10.77.0.4,31.739,99.708,99.488,0.221,255.609,2226.66,0.0,0.0,0.126,0.032,228.2,49.66,975,166,5,0.019,0.083
