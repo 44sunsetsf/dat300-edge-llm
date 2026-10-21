@@ -117,8 +117,8 @@ PY
     echo "decode 阶段 CPU 忙%（按节点顺序）：$CPU"
   fi
   echo "温度/降频：$(temp_all)"
-  PPV=$(grep -E "pp$P " <<<"$RES" | grep -oE '[0-9.]+ ± [0-9.]+' | head -1 | cut -d' ' -f1)
-  TGV=$(grep -E "tg$N " <<<"$RES" | grep -oE '[0-9.]+ ± [0-9.]+' | head -1 | cut -d' ' -f1)
+  PPV=$(grep -E "pp$P " <<<"$RES" | grep -oE '[0-9.]+ ± [0-9.]+' | head -1 | cut -d' ' -f1 || true)
+  TGV=$(grep -E "tg$N " <<<"$RES" | grep -oE '[0-9.]+ ± [0-9.]+' | head -1 | cut -d' ' -f1 || true)
   echo "RESULT mode=$MODE nn=$NN build=${BUILD:-opt} rpc_t=${RPC_T:-4} rpc_t_head=${RPC_T_HEAD:-${RPC_T:-4}} env=${ENV:+${ENV// /,}} extra=${EXTRA:+${EXTRA// /,}}${UB:+,ub=$UB} netem_ms=${NETEM_MS:-0} prefill=${PPV:-失败} decode=${TGV:-失败} head_kb=$KB cpu=$CPU"
 } 2>&1 | tee "$OUT"
 for s in $SERVERS; do ssh_pi "$s" 'pkill -x ggml-rpc-server; true'; done

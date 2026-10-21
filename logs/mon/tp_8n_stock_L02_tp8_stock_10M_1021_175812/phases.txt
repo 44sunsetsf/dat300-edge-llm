@@ -1,0 +1,8 @@
+1792598309617 llama-bench: benchmark 1/1: starting
+1792598327745 llama-bench: benchmark 1/1: warmup generation run
+1792598472123 llama-bench: benchmark 1/1: generation run 1/1
+1792598958927 | model                          |       size |     params | backend    | ngl |     sm | dev          |            test |                  t/s |
+1792598958934 | ------------------------------ | ---------: | ---------: | ---------- | --: | -----: | ------------ | --------------: | -------------------: |
+1792598958942 | llama 3B Q4_0                  |   2.08 GiB |     3.61 B | RPC        |  -1 | tensor | RPC0/RPC1/RPC2/RPC3/RPC4/RPC5/RPC6/RPC7 |             tg3 |          0.01 ± 0.00 |
+1792598959217 
+1792598959220 build: unknown (0)

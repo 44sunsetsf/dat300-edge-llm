@@ -8,3 +8,11 @@ CMAKE_BUILD_TYPE=Release
 已生成 dist/llama-72578f5-linux-arm64-bookworm.tar.gz（ 32M）
 已发布 dat300-72578f5
 CMAKE_BUILD_TYPE=Release
+[213/213] Linking CXX executable bin/llama-cli
+已生成 dist/llama-72578f5-linux-arm64-cortex-a76.tar.gz（ 32M）
+已发布 dat300-72578f5
+ERROR: docker: 'docker buildx build' requires 1 argument
+
+Usage:  docker buildx build [OPTIONS] PATH | URL | -
+
+Run 'docker buildx build --help' for more information

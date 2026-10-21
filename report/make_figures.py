@@ -330,3 +330,43 @@ ax.axvline(2.5, color="#999", lw=0.8)
 ax.set_xticks(range(len(hb))); ax.set_xticklabels([h[0] for h in hb], fontsize=7.5); ax.set_ylabel("Decode throughput (tokens/s)")
 ax.set_ylim(0, 7.3); ax.grid(axis="x")
 save(fig, "head_bottleneck")
+
+# ---------------------------------------------------------------- 14. 10 Mbps experiment (8 nodes): stock vs ours
+# L02 (stock, 10 Mbps), L01 (ours, 10 Mbps; two runs 0.20 / 0.26), T01 (stock, 1 Gbps), F1 (ours, 1 Gbps)
+fig, axes = plt.subplots(1, 2, figsize=(7.8, 3.1))
+ax = axes[0]; x = range(2)
+st_ = [0.41, 0.01]; ours = [6.34, 0.23]
+ax.bar([i - 0.18 for i in x], st_, 0.35, color=C["stock"], label="stock llama.cpp (relay through head)")
+ax.bar([i + 0.18 for i in x], ours, 0.35, color=C["untied"], label="ours (direct allreduce + no-spin)")
+for i in x:
+    ax.text(i - 0.18, st_[i] * 1.25, f"{st_[i]:.2f}", ha="center", fontsize=8)
+    ax.text(i + 0.18, ours[i] * 1.25, f"{ours[i]:.2f}" if i == 0 else "0.20-0.26", ha="center", fontsize=8)
+    ax.text(i, 22, f"{ours[i] / st_[i]:.0f}x" if i == 0 else "20-26x", ha="center", fontsize=9, fontweight="bold")
+ax.set_yscale("log"); ax.set_ylim(0.005, 3000); ax.set_xticks(list(x)); ax.set_xticklabels(["1 Gbit/s links", "10 Mbit/s links"])
+ax.set_ylabel("8-node decode (tokens/s, log)"); ax.legend(fontsize=7, loc="upper center"); ax.set_title("(a) Decode throughput", fontsize=9); ax.grid(axis="x")
+ax = axes[1]
+lab = ["head\nstock", "head\nours", "worker\nstock", "worker\nours"]
+val = [200.7, 5.3, 28.6, 4.4]
+bars = ax.bar(range(4), val, 0.55, color=[C["stock"], C["untied"], C["stock"], C["untied"]])
+for b_, v in zip(bars, val):
+    ax.text(b_.get_x() + b_.get_width() / 2, v * 1.2, f"{v:.1f} MB", ha="center", fontsize=8)
+ax.set_yscale("log"); ax.set_ylim(1, 1500); ax.set_xticks(range(4)); ax.set_xticklabels(lab, fontsize=8)
+ax.set_ylabel("Traffic per token (MB, rx+tx, log)"); ax.set_title("(b) Network traffic per token at 10 Mbit/s", fontsize=9); ax.grid(axis="x")
+save(fig, "bandwidth_10mbps")
+
+# ---------------------------------------------------------------- 15. Distributed Llama architecture (drawn from the README description)
+fig, ax = plt.subplots(figsize=(5.6, 3.1)); ax.axis("off"); ax.set_xlim(0, 10); ax.set_ylim(0, 6.2)
+ax.add_patch(FancyBboxPatch((3.9, 4.6), 2.2, 0.7, boxstyle="round,pad=0.05", fc="#dbe9f6", ec="#1f77b4"))
+ax.text(5, 4.95, "switch / router", ha="center", va="center", fontsize=8.5)
+boxes = [(1.2, "ROOT node", "loads model\n+ tokenizer,\nsends weight\nslices, syncs\nstate, computes\nslice 1/N", "#fdd0a2", "#e6550d"),
+         (3.85, "WORKER 1", "computes slice 2/N\nno model config", "#c7e9c0", "#31a354"),
+         (6.15, "WORKER 2", "computes slice 3/N", "#c7e9c0", "#31a354"),
+         (8.8, "WORKER N-1", "computes slice N/N", "#c7e9c0", "#31a354")]
+for x, t, d, fc, ec in boxes:
+    ax.add_patch(FancyBboxPatch((x - 1.0, 0.5), 2.0, 2.6, boxstyle="round,pad=0.05", fc=fc, ec=ec))
+    ax.text(x, 2.75, t, ha="center", va="center", fontsize=8, fontweight="bold")
+    ax.text(x, 1.6, d, ha="center", va="center", fontsize=6.3)
+    ax.annotate("", xy=(x, 3.15), xytext=(5, 4.55), arrowprops=dict(arrowstyle="<->", color="#555", lw=1))
+ax.text(7.45, 1.8, "...", fontsize=14, ha="center")
+ax.text(5, 5.85, "TCP: weight slices at start-up;\nactivations synchronized after every layer", ha="center", fontsize=6.8, color="#555")
+save(fig, "dllama_architecture")
