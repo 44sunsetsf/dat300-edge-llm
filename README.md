@@ -3,6 +3,8 @@
 DAT300 第 7 组：在 Raspberry Pi 集群上用 llama.cpp 做分布式推理，比较流水线并行（PP）和张量并行（TP），找出瓶颈并优化。
 模型是 Llama-3.2-3B-Instruct Q4_0。
 
+**最终提交**：[报告 PDF](report/DAT300_Group7_Final_Report.pdf) · [幻灯片](report/slides.pdf) · [演讲稿（中英对照）](report/DAT300_Group7_Presentation_Script.pdf)
+
 - **下次活动照着做**：[`docs/操作指南.md`](docs/操作指南.md)（从接线到出结果，一步一步写好了）
 - **不用脚本、自己调参**：[`docs/手动使用改进版.md`](docs/手动使用改进版.md)（rpc-server 怎么起、主控上怎么跑、能调哪些参数）
 - **每一步的耗时日志**：[`docs/计时日志.md`](docs/计时日志.md)（每台 Pi 记录每条命令的耗时，自动拆分每个 token 的时间）
