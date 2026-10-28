@@ -4,6 +4,8 @@
 \setbeamertemplate{navigation symbols}{}
 \usepackage{booktabs}
 \usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 \graphicspath{{figures/}}
 
 \title[Distributed LLM Inference on the Edge]{Distributed LLM Inference on the Edge}
@@ -28,7 +30,8 @@
 \begin{columns}[T]
 \column{0.48\textwidth}
 \begin{itemize}
-\item Cloud LLMs send your data away and need a connection
+\item Cyber-physical systems (robots, cars, smart homes, factories) increasingly want language models close to the sensors
+\item Cloud LLMs send the data away, add latency and need a connection
 \item One Raspberry Pi can run a small model, but slowly
 \item Can several cheap boards work together and be faster?
 \end{itemize}
@@ -68,7 +71,32 @@ Decode, alone & 1.84 tok/s & 12.28 tok/s \\
 \end{columns}
 \end{frame}
 
-\begin{frame}{How we ran and measured it}
+\begin{frame}{The problem: how do you split a model over devices?}
+\centering
+\begin{tikzpicture}[
+  dev/.style={draw,rounded corners,minimum width=1.8cm,minimum height=0.8cm,font=\footnotesize,fill=red!8,align=center},
+  part/.style={draw,minimum width=0.42cm,minimum height=0.8cm,fill=red!8},
+  >={Stealth}]
+\node[font=\bfseries\small] at (-0.3,1.3) {Pipeline parallel (PP)};
+\foreach \i/\l in {0/1--7,1/8--14,2/15--21,3/22--28} {
+  \node[dev] (p\i) at (\i*2.4-3.6,0) {Pi \the\numexpr\i+1\relax\\layers \l};
+}
+\foreach \i/\j in {0/1,1/2,2/3} {\draw[->,thick] (p\i) -- (p\j);}
+\node[font=\scriptsize,align=center] at (-0.0,-0.85) {the token visits one device after another: only one device works at a time};
+\node[font=\bfseries\small] at (-0.3,-1.75) {Tensor parallel (TP)};
+\foreach \k in {0,...,3} {
+  \foreach \i in {0,...,3} {\node[part] (t\k\i) at (\k*2.4-4.23+\i*0.42,-3.05) {};}
+  \node[font=\scriptsize,above=0.02cm of t\k1.north east] {Pi \the\numexpr\k+1\relax};
+}
+\node[font=\scriptsize] at (-0.3,-3.05) {};
+\draw[<->,thick,blue!60!black] (t03.east) .. controls +(0.4,-0.9) and +(-0.4,-0.9) .. (t10.west);
+\draw[<->,thick,blue!60!black] (t13.east) .. controls +(0.4,-0.9) and +(-0.4,-0.9) .. (t20.west);
+\draw[<->,thick,blue!60!black] (t23.east) .. controls +(0.4,-0.9) and +(-0.4,-0.9) .. (t30.west);
+\node[font=\scriptsize,align=center] at (-0.0,-4.15) {every layer is split over all devices: all work at once, but they must sum their results\\(an \emph{allreduce}) twice per layer, 56 times per token};
+\end{tikzpicture}
+\end{frame}
+
+\begin{frame}{Our approach}
 \begin{columns}[c]
 \column{0.5\textwidth}
 \includegraphics[width=\textwidth]{llamacpp_rpc_official.png}
@@ -177,6 +205,25 @@ Three bottlenecks explain the gap.
 \end{columns}
 \end{frame}
 
+\begin{frame}{Demo: chatting with the 8-node cluster}
+\begin{columns}[c]
+\column{0.55\textwidth}
+\begin{block}{On the head node}
+\ttfamily\small
+\$ scripts/chat.sh "What is a Raspberry Pi?"
+\end{block}
+\vspace{2mm}
+\begin{itemize}
+\item Tensor parallel over all 8 devices
+\item With our changes: about 6 tokens/s
+\item Stock llama.cpp: one token every 2.4 s
+\end{itemize}
+\column{0.42\textwidth}
+\centering
+\includegraphics[width=\textwidth]{topology.pdf}
+\end{columns}
+\end{frame}
+
 \begin{frame}{Pipeline parallelism and a faster board}
 \begin{columns}[T]
 \column{0.5\textwidth}
@@ -199,7 +246,7 @@ Three bottlenecks explain the gap.
 
 \section{Conclusion}
 
-\begin{frame}{Problems we ran into}
+\begin{frame}{Practical challenges in the lab}
 \begin{itemize}
 \item The switch lost its DHCP settings after a reset, so we gave every board a static IP
 \item One Pi rebooted mid-test because of a weak power supply
@@ -209,9 +256,10 @@ Three bottlenecks explain the gap.
 \end{itemize}
 \end{frame}
 
-\begin{frame}{Conclusions and future work}
+\begin{frame}{Conclusions and insights}
 \begin{columns}[T]
 \column{0.55\textwidth}
+\textbf{What we found}
 \begin{enumerate}
 \item TP scales to 3.4$\times$ on 8 Pis; PP does not speed up a single request
 \item TP needs far more communication than PP
@@ -219,11 +267,11 @@ Three bottlenecks explain the gap.
 \item Three small changes, no accuracy loss
 \end{enumerate}
 \column{0.42\textwidth}
-Future work
+\textbf{New challenges that came up}
 \begin{itemize}
-\item Uneven splits for mixed devices
-\item Models too large for one board
-\item Fewer sync rounds per token
+\item Each fix revealed the next bottleneck (8 nodes: the head's CPU)
+\item Mixed devices need uneven splits, which the fast allreduce does not support yet
+\item One modern board beats 7 Pis for a 3B model: clusters pay off for models that don't fit on one board
 \end{itemize}
 \end{columns}
 \end{frame}
