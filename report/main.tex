@@ -279,6 +279,13 @@ All nodes are connected through a single Gigabit Ethernet switch (a Netgear M430
 \label{fig:topology}
 \end{figure}
 
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{figures/cluster_photo.jpg}
+\caption{Our cluster in the lab: the Netgear M4300-28G switch (centre) with Raspberry Pi 400 keyboards, Raspberry Pi 4B boards in red-and-white cases (e.g.\ jarjar and crosshair, labelled) and the LubanCat-5 (RK3588) board in the grey case at the back.}
+\label{fig:cluster-photo}
+\end{figure}
+
 We picked this layout because it directly matches the root-to-worker point-to-point communication pattern used in tensor parallelism in Section~\ref{sec:n2_3_2}, and it is also the easiest and cleanest way to separate compute latency from network delays.
 
 \subsection{Deployment on the Pi Cluster}\label{sec:n7_4}
