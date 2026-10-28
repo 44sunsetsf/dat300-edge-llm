@@ -1,0 +1,254 @@
+\documentclass[aspectratio=169,10pt]{beamer}
+\usetheme{default}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{\hfill\scriptsize\insertframenumber/\inserttotalframenumber\hspace{2mm}\vspace{1mm}}
+\setbeamerfont{frametitle}{series=\bfseries}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\graphicspath{{figures/}}
+\newcommand{\hl}[1]{\textcolor{orange!80!black}{\textbf{#1}}}
+
+\title{Distributed LLM Inference on the Edge}
+\subtitle{Parallelism, Network and Bottlenecks on a Raspberry Pi Cluster}
+\author{Group 7: Yuzhou Zhang, Yunfan Zhang, Shuo Zhang, Wenqi Zhao}
+\institute{DAT300/DIT616, Chalmers University of Technology\\Supervisors: Yixing Zhang and Romaric Duvignau}
+\date{Final presentation, October 2026}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}{Motivation and research questions}
+\begin{columns}[T]
+\column{0.5\textwidth}
+\begin{itemize}
+\item Cloud LLMs: private data leaves the device, costs money, needs connectivity
+\item One edge board: private and offline, but 4~GB RAM and a weak CPU
+\item \hl{Idea:} let a cluster of cheap boards run the model together
+\item \hl{Goal:} measure and profile it, find what limits it, remove the limits
+\end{itemize}
+\column{0.5\textwidth}
+\begin{itemize}
+\item[\textbf{RQ1}] How do throughput and TTFT scale with the number of nodes?
+\item[\textbf{RQ2}] Pipeline (PP) vs.\ tensor (TP) parallelism?
+\item[\textbf{RQ3}] What is the bottleneck: bandwidth, latency, memory, heterogeneity?
+\item[\textbf{RQ4}] Can simple optimizations help without hurting accuracy?
+\end{itemize}
+\end{columns}
+\vspace{4mm}
+\begin{center}\small Workload: Llama-3.2-3B-Instruct, Q4\_0 (1.9~GB)\\Metrics: prefill and decode tokens/s, network traffic, CPU and memory per device\end{center}
+\end{frame}
+
+\begin{frame}{Cluster: 8 devices on one Gigabit switch}
+\begin{columns}[c]
+\column{0.5\textwidth}
+\includegraphics[width=\textwidth]{topology.pdf}
+\column{0.5\textwidth}
+\scriptsize
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & Pi 400 / 4B ($\times$7) & RK3588 \\
+\midrule
+CPU & 4$\times$A72 & 4$\times$A76 + 4$\times$A55 \\
+RAM & 4 GB & 4 GB \\
+Mem.\ bandwidth & 3.7--4.2 GB/s & 21--23 GB/s \\
+Decode alone & 1.84 tok/s & 12.28 tok/s \\
+\bottomrule
+\end{tabular}
+\vspace{2mm}
+
+Network: 940 Mbit/s TCP, RTT 0.06--0.24 ms
+
+\vspace{2mm}
+A single board reads the weights at \hl{70--85\%} of its memory bandwidth $\Rightarrow$ decode is memory-bound
+\end{columns}
+\end{frame}
+
+\begin{frame}{Frameworks and method}
+\begin{columns}[c]
+\column{0.5\textwidth}
+\includegraphics[width=\textwidth]{llamacpp_rpc_official.png}
+
+\scriptsize \texttt{llama.cpp} RPC backend (official diagram): \texttt{-sm layer} = PP, \texttt{-sm tensor} = TP, 56 allreduces per token
+\column{0.5\textwidth}
+\begin{enumerate}
+\item Baseline with \hl{Distributed Llama} (TP only): 1.97 / 3.55 / 5.81 tok/s on 1 / 2 / 4 nodes
+\item PP vs.\ TP with the \hl{llama.cpp RPC backend}, 1--8 devices
+\item Two instruments to attribute bottlenecks:
+\begin{itemize}
+\item \textbf{resource monitor} on every device (CPU, memory, bytes, packets; 0.5~s)
+\item \textbf{timing log} inside every RPC server (compute / sync / idle per token)
+\end{itemize}
+\item Fix the bottleneck, measure again, check perplexity
+\end{enumerate}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Result: decode throughput from 1 to 8 nodes}
+\begin{columns}[c]
+\column{0.6\textwidth}
+\includegraphics[width=\textwidth]{decode_scaling.pdf}
+\column{0.4\textwidth}
+\begin{itemize}
+\item \hl{PP never beats one board} (1.84--2.00 tok/s): stages run one after another
+\item \hl{Stock TP gets slower} with more nodes: 0.41 tok/s on 8
+\item Ours: \hl{6.34 tok/s} on 8 nodes\\(3.4$\times$ one Pi, 15.5$\times$ stock)
+\item Prefill: 4.1 $\rightarrow$ 16.2 tok/s
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Bottleneck 1: every allreduce relayed through the head}
+\begin{columns}[c]
+\column{0.5\textwidth}
+\includegraphics[width=\textwidth]{head_traffic.pdf}
+\column{0.5\textwidth}
+\begin{itemize}
+\item Stock \texttt{llama.cpp}: direct exchange only for exactly 2 servers; otherwise the head downloads, sums and re-uploads every partial result
+\item 4 nodes: head sends \hl{49.9 MB per token}, decode 1.03 tok/s (slower than one board)
+\item \textbf{Fix:} direct peer-to-peer \hl{recursive-doubling allreduce}, $\log_2 N$ rounds of 12~KB
+\item 4 nodes: 1.03 $\rightarrow$ 2.99 tok/s
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Bottleneck 2: the output layer is not split}
+\begin{columns}[c]
+\column{0.6\textwidth}
+\includegraphics[width=\textwidth]{trace_breakdown_tp4.pdf}
+\column{0.4\textwidth}
+\begin{itemize}
+\item Timing log: every node spends \hl{80--85 ms/token} on the 323~MB output layer, regardless of $N$
+\item Cause: Llama-3.2 ties output and input embedding; \texttt{llama.cpp} replicates the tied tensor
+\item \textbf{Fix:} store an identical untied \texttt{output.weight} $\Rightarrow$ split $N$ ways, \hl{identical perplexity}
+\item 4 nodes: 2.99 $\rightarrow$ 4.85 tok/s (+62\%)
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Bottleneck 3: at 8 nodes the head's CPU is exhausted}
+\begin{columns}[c]
+\column{0.6\textwidth}
+\includegraphics[width=\textwidth]{cpu_timeline_tp8.pdf}
+\column{0.4\textwidth}
+\begin{itemize}
+\item Monitor: head CPU \hl{94\%}, workers 15\%
+\item Timing log: every node \hl{idle 470 of 631 ms} per token, waiting for the head
+\item \texttt{gdb} sampling: 8 \hl{busy-spinning} dispatcher threads + 4 compute threads on 4 cores
+\item \textbf{Fix:} \texttt{GGML\_RPC\_NO\_SPIN}: 1.62 $\rightarrow$ \hl{6.34 tok/s}, idle 470 $\rightarrow$ 15 ms
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{The network is not the bottleneck (on a Gigabit switch)}
+\begin{columns}[c]
+\column{0.62\textwidth}
+\includegraphics[width=\textwidth]{resources_decode.pdf}
+\column{0.38\textwidth}
+\begin{itemize}
+\item 8 nodes: $\approx$4 MB and 3200--3500 packets per token per worker, at most \hl{233 of 940 Mbit/s}
+\item Same traffic with and without busy-spin, but \hl{3.9$\times$} speed difference
+\item Bytes/token follow $2 \cdot 56 \cdot \log_2 N \cdot 12$~KB
+\item Memory is not limiting either ($\approx$260 MB per worker at 8 nodes)
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{When the network is slow: links limited to 10 Mbit/s}
+\begin{columns}[c]
+\column{0.6\textwidth}
+\includegraphics[width=\textwidth]{bandwidth_10mbps.pdf}
+\column{0.4\textwidth}
+\begin{itemize}
+\item 8 nodes, all device links at 10 Mbit/s (after loading the model)
+\item Stock: head moves \hl{200 MB per token}, link saturated, \hl{0.01 tok/s}
+\item Ours: 5.3 MB at the head, \hl{0.20--0.26 tok/s}
+\item \hl{20--26$\times$} faster (15$\times$ at 1 Gbit/s): the traffic reduction matters most on slow networks
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Pipeline parallelism: what can and cannot be improved}
+\begin{columns}[c]
+\column{0.6\textwidth}
+\includegraphics[width=\textwidth]{pp_pipeline_batching.pdf}
+\column{0.4\textwidth}
+\begin{itemize}
+\item One request: \hl{never faster than one board} (by design)
+\item Chunked prefill (\texttt{-ub 32}): +12\% (ideal 2.3$\times$)
+\item Several requests + small chunks: 3.24 $\rightarrow$ \hl{4.18 tok/s} (+29\%), the only PP case above one board
+\item TP still wins: \hl{7.83 tok/s} with 8 requests
+\item Real use of PP: models that do not fit one board
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Heterogeneous devices: one RK3588 board}
+\begin{columns}[c]
+\column{0.62\textwidth}
+\includegraphics[width=\textwidth]{heterogeneous.pdf}
+\column{0.38\textwidth}
+\begin{itemize}
+\item Build for Cortex-A76 (dot-product instructions): 5.84 $\rightarrow$ \hl{12.28 tok/s}
+\item Even split: fast board waits for the Pis
+\item Speed-proportional split (\texttt{-ts}): TP 2 nodes 3.24 $\rightarrow$ \hl{7.00 tok/s}
+\item But the RK3588 alone is faster than any Pi mix for this model
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Summary}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}p{5.0cm}>{\raggedright\arraybackslash}p{3.6cm}@{}}
+\toprule
+Bottleneck & Optimization & Effect (decode, tok/s) \\
+\midrule
+Single board: memory bandwidth & distribute the model & -- \\
+Allreduce relayed through head & direct recursive-doubling allreduce & 4 nodes: 1.03 $\rightarrow$ 2.99 \\
+Tied output layer replicated & untied copy (identical output) & 4 nodes: 2.99 $\rightarrow$ 4.85 \\
+Head CPU (busy-spin) at 8 nodes & \texttt{GGML\_RPC\_NO\_SPIN} & 8 nodes: 1.62 $\rightarrow$ 6.34 \\
+Slow network (10 Mbit/s) & direct allreduce & 8 nodes: 0.01 $\rightarrow$ 0.20--0.26 \\
+PP: one stage active & batching + pipelined decode & 3.24 $\rightarrow$ 4.18 \\
+Heterogeneity & A76 build, weighted split & 3.24 $\rightarrow$ 7.00 \\
+\bottomrule
+\end{tabular}
+\vspace{3mm}
+\begin{itemize}
+\item \textbf{RQ1/2:} TP scales to 3.4$\times$ on 8 nodes; PP only adds capacity
+\item \textbf{RQ3:} memory bandwidth on one board; on the cluster, whatever does not shrink with $N$ (head relay, unsplit layer, head CPU), \hl{not network bandwidth}
+\item \textbf{RQ4:} simple changes, no accuracy loss
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Limitations and future work}
+\begin{columns}[T]
+\column{0.5\textwidth}
+\textbf{Limitations}
+\begin{itemize}
+\item 8 nodes always include the RK3588 board
+\item One model (3B); larger-than-board models not measured
+\item Weighted TP splits beyond 2 nodes fall back to the head relay
+\item 1--2 repetitions per configuration
+\end{itemize}
+\column{0.5\textwidth}
+\textbf{Future work}
+\begin{itemize}
+\item Uneven shards in the direct allreduce (weighted heterogeneous TP)
+\item Reduce the per-token head overhead and the number of sync rounds
+\item Direct activation transfer between PP stages
+\item Larger models; speculative decoding, KV-cache compression
+\end{itemize}
+\end{columns}
+\vspace{5mm}
+\centering\small Code, scripts and raw data: \url{https://github.com/44sunsetsf/dat300-edge-llm}
+\end{frame}
+
+\begin{frame}
+\centering\Large Thank you! Questions?
+\end{frame}
+
+\end{document}
